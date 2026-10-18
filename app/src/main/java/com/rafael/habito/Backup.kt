@@ -23,6 +23,8 @@ object Backup {
             .put("reminderHour", s.reminderHour)
             .put("goal", s.goal)
             .put("rest", JSONArray(s.rest.sorted()))
+            .put("restHistory", HabitStore.encodeRestHistory(s.restHistory))
+            .put("exportedAt", System.currentTimeMillis())
             .put("reminders", HabitStore.encodeRems(s.reminders))
             .put("palette", s.palette)
             .put("themeMode", s.themeMode)
@@ -35,8 +37,11 @@ object Backup {
         ctx.contentResolver.openOutputStream(uri, "wt")!!.use { it.write(json.toString(2).toByteArray()) }
     }
 
-    /** Devolve quantos dias feitos foram restaurados. Lança exceção se o arquivo não for um backup do Hábito. */
-    suspend fun import(ctx: Context, uri: Uri): Int = withContext(Dispatchers.IO) {
+    /** O que um arquivo traz, antes de substituir qualquer coisa. [exportedAt] = 0 em backups antigos. */
+    class Preview(val state: HabitState, val exportedAt: Long)
+
+    /** Lê e valida o arquivo sem gravar nada. Lança exceção se não for um backup do Hábito. */
+    suspend fun peek(ctx: Context, uri: Uri): Preview = withContext(Dispatchers.IO) {
         val text = ctx.contentResolver.openInputStream(uri)!!.use { it.readBytes().decodeToString() }
         val json = JSONObject(text)
         require(json.optString("app") == APP) { "não é um backup do Hábito" }
@@ -53,6 +58,7 @@ object Backup {
             reminderHour = json.optInt("reminderHour", -1),
             goal = json.optInt("goal", 0),
             rest = json.optJSONArray("rest")?.let { a -> (0 until a.length()).map { a.getInt(it) }.toSet() } ?: emptySet(),
+            restHistory = HabitStore.decodeRestHistory(json.optString("restHistory", "")),
             // Backups antigos só tinham a hora do lembrete único.
             reminders = if (json.has("reminders")) HabitStore.decodeRems(json.getString("reminders"))
             else json.optInt("reminderHour", -1).let { if (it >= 0) listOf(Rem(it * 60)) else emptyList() },
@@ -63,7 +69,6 @@ object Backup {
             celebrate = json.optBoolean("celebrate", true),
             letters = Letter.decode(json.optString("letters", "")),
         )
-        HabitStore.replaceAll(ctx, s)
-        s.done.size
+        Preview(s, json.optLong("exportedAt", 0L))
     }
 }

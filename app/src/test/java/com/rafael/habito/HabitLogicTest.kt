@@ -300,4 +300,29 @@ class HabitLogicTest {
         assertEquals(list, Letter.decode(Letter.encode(list)))
         assertTrue(Letter.decode("lixo").isEmpty())
     }
+
+    // ---------- regras com data e viagem (hoje é sexta, 16/10)
+    @Test fun `descanso novo nao reescreve o passado`() {
+        // domingo 11/10 vazio, no meio de uma sequência; o descanso de domingo só passou a valer hoje
+        val done = days(7, 6, 4, 3, 2, 1) // sex 9, sáb 10, seg 12 a qui 15
+        val h = HabitStore.withRestChange(emptyList(), emptySet(), setOf(0), today)
+        val s = HabitState(done = done, rest = setOf(0), restHistory = h)
+        assertTrue(!s.isRest(today.minusDays(5)))          // o domingo passado continua um dia comum
+        assertEquals(setOf(today.minusDays(5)), s.tropes)  // e vira tropeço, não descanso
+        assertTrue(HabitState(rest = setOf(0), restHistory = h).restAt(today.plusDays(2)) == setOf(0))
+    }
+
+    @Test fun `historico de descanso ida e volta`() {
+        val h = HabitStore.withRestChange(emptyList(), setOf(6), setOf(0, 6), today)
+        assertEquals(listOf(HabitStore.EPOCH to setOf(6), today to setOf(0, 6)), h)
+        assertEquals(h, HabitStore.decodeRestHistory(HabitStore.encodeRestHistory(h)))
+        // mudar de novo no mesmo dia substitui
+        assertEquals(2, HabitStore.withRestChange(h, setOf(0, 6), emptySet(), today).size)
+    }
+
+    @Test fun `dia seguinte ja feito por fuso vira hoje`() {
+        val s = HabitState(done = setOf(today.plusDays(1)) + days(0, 1, 2))
+        assertEquals(today.plusDays(1), s.today)
+        assertEquals(4, s.currentStreak())
+    }
 }

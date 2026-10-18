@@ -71,6 +71,7 @@ data class HabitState(
     val goal: Int = 0,          // 0 = todo dia; 3..6 = vezes por semana (semana de domingo a sábado, como a grade)
     val retroSeen: String = "", // último mês (yyyy-MM) cuja retrospectiva já foi vista
     val rest: Set<Int> = emptySet(),          // dias de descanso (0 = domingo); não quebram a sequência diária
+    val restHistory: List<Pair<LocalDate, Set<Int>>> = emptyList(), // regra de descanso com data: cada dia usa a que valia nele
     val reminders: List<Rem> = emptyList(),   // até três, em qualquer horário
     val palette: String = "verde",            // cor do mapa
     val themeMode: Int = 0,                   // 0 = sistema, 1 = claro, 2 = escuro
@@ -91,12 +92,19 @@ data class HabitState(
     /** A frase que abre agora: a sequência chegou ao dia dela, com hoje feito. */
     val letterToOpen: Letter? get() = sealed?.takeIf { !weekly && today in done && currentStreak() >= it.forDay }
 
-    val today: LocalDate get() = HabitStore.today(rolloverHour)
+    /**
+     * Hoje pelo relógio, com uma correção de viagem: se o dia seguinte já está feito (marcado num fuso adiante,
+     * e o voo voltou o relógio), hoje é esse dia, para a sequência não quebrar nem contar duas vezes.
+     */
+    val today: LocalDate get() = HabitStore.today(rolloverHour).let { t -> if (t.plusDays(1) in done) t.plusDays(1) else t }
+
+    /** Os dias de descanso que valiam em [d]: mudar a regra hoje não reescreve o passado. */
+    fun restAt(d: LocalDate): Set<Int> = restHistory.lastOrNull { !it.first.isAfter(d) }?.second ?: rest
     val weekly: Boolean get() = goal > 0
     private val firstDow: Int get() = if (mondayFirst) 1 else 0
 
     /** Dia de descanso que não foi feito: a sequência atravessa sem contar nem quebrar. */
-    fun isRest(d: LocalDate): Boolean = !weekly && d.dow in rest && d !in done
+    fun isRest(d: LocalDate): Boolean = !weekly && d !in done && d.dow in restAt(d)
 
     /**
      * Tropeços ("nunca duas vezes"): um único dia sem fazer entre dois feitos não quebra a sequência.
@@ -284,6 +292,21 @@ object HabitStore {
     private val GOAL = intPreferencesKey("week_goal")
     private val RETRO = stringPreferencesKey("retro_seen")
     private val REST = stringSetPreferencesKey("rest_days")
+    private val REST_HISTORY = stringPreferencesKey("rest_history") // "1970-01-01=0;2026-10-18=0,6"
+    /** Antes de qualquer mudança registrada: a regra antiga vale para todo o passado. */
+    val EPOCH: LocalDate = LocalDate.of(1970, 1, 1)
+
+    fun encodeRestHistory(h: List<Pair<LocalDate, Set<Int>>>): String = h.joinToString(";") { (d, s) -> "$d=" + s.sorted().joinToString(",") }
+    fun decodeRestHistory(s: String?): List<Pair<LocalDate, Set<Int>>> = s.orEmpty().split(';').mapNotNull { p ->
+        val (d, days) = p.split('=').takeIf { it.size == 2 } ?: return@mapNotNull null
+        runCatching { LocalDate.parse(d) to days.split(',').mapNotNull { it.toIntOrNull() }.toSet() }.getOrNull()
+    }.sortedBy { it.first }
+
+    /** Nova regra a partir de [from]; a primeira mudança guarda a regra antiga como a do passado inteiro. */
+    fun withRestChange(history: List<Pair<LocalDate, Set<Int>>>, old: Set<Int>, new: Set<Int>, from: LocalDate): List<Pair<LocalDate, Set<Int>>> {
+        val base = history.ifEmpty { listOf(EPOCH to old) }
+        return (base.filter { it.first.isBefore(from) } + (from to new)).sortedBy { it.first }
+    }
     private val REMS = stringPreferencesKey("reminders")     // "540:1,1260:0"
     private val PALETTE = stringPreferencesKey("palette")
     private val THEME = intPreferencesKey("theme_mode")
@@ -328,6 +351,7 @@ object HabitStore {
         goal = this[GOAL] ?: 0,
         retroSeen = this[RETRO] ?: "",
         rest = this[REST].orEmpty().mapNotNull { it.toIntOrNull() }.toSet(),
+        restHistory = decodeRestHistory(this[REST_HISTORY]),
         // Quem vinha do lembrete único (só a hora) ganha a mesma hora como primeiro lembrete.
         reminders = if (this[REMS] != null) decodeRems(this[REMS]) else (this[REMINDER] ?: -1).let { if (it >= 0) listOf(Rem(it * 60)) else emptyList() },
         palette = this[PALETTE] ?: "verde",
@@ -355,7 +379,12 @@ object HabitStore {
     suspend fun setReminder(ctx: Context, hour: Int) = ctx.store.edit { it[REMINDER] = hour }
     suspend fun setGoal(ctx: Context, goal: Int) = ctx.store.edit { it[GOAL] = goal }
     suspend fun setRetroSeen(ctx: Context, month: String) = ctx.store.edit { it[RETRO] = month }
-    suspend fun setRest(ctx: Context, days: Set<Int>) = ctx.store.edit { it[REST] = days.take(MAX_REST).map(Int::toString).toSet() }
+    suspend fun setRest(ctx: Context, days: Set<Int>) = ctx.store.edit { p ->
+        val new = days.take(MAX_REST).toSet()
+        val old = p[REST].orEmpty().mapNotNull { it.toIntOrNull() }.toSet()
+        p[REST_HISTORY] = encodeRestHistory(withRestChange(decodeRestHistory(p[REST_HISTORY]), old, new, today(p[HOUR] ?: 0)))
+        p[REST] = new.map(Int::toString).toSet()
+    }
     suspend fun setReminders(ctx: Context, r: List<Rem>) = ctx.store.edit { it[REMS] = encodeRems(r.take(MAX_REMINDERS).sortedBy(Rem::minutes)) }
     suspend fun setPalette(ctx: Context, name: String) = ctx.store.edit { it[PALETTE] = name }
     suspend fun setTheme(ctx: Context, mode: Int) = ctx.store.edit { it[THEME] = mode }
@@ -414,6 +443,7 @@ object HabitStore {
             p[REMINDER] = s.reminderHour
             p[GOAL] = s.goal
             p[REST] = s.rest.map(Int::toString).toSet()
+            p[REST_HISTORY] = encodeRestHistory(s.restHistory)
             p[REMS] = encodeRems(s.reminders)
             p[PALETTE] = s.palette
             p[THEME] = s.themeMode

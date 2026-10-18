@@ -7,6 +7,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -103,27 +104,72 @@ internal fun LetterField(text: String, onChange: (String) -> Unit, placeholder: 
     }
 }
 
+private val FIRST_SUGGESTIONS = listOf("Ler 20 páginas", "Treinar", "Meditar 10 min", "Escrever", "Estudar 30 min")
+private val FIRST_GOALS = listOf(0, 3, 4, 5, 6)
+
 /**
- * Dia 1: uma pergunta, um campo, guardar ou pular. A frase fica lacrada e só volta no dia 30.
+ * Dia 1 em três passos calmos: qual hábito, com que frequência e por quê (a frase lacrada até o dia 30).
+ * Uma régua de três traços no topo mostra onde se está; voltar recua um passo.
  */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-fun LetterAsk(onSeal: (String) -> Unit, onSkip: () -> Unit) {
+fun FirstUse(onDone: (name: String, goal: Int, letter: String?) -> Unit) {
     val pal = Tokens
+    var step by rememberSaveable { mutableStateOf(0) }
+    var name by rememberSaveable { mutableStateOf("") }
+    var goal by rememberSaveable { mutableStateOf(0) }
     var text by rememberSaveable { mutableStateOf("") }
-    BackHandler(onBack = onSkip)
+    BackHandler(enabled = step > 0) { step-- }
     Column(
         Modifier.fillMaxSize().background(pal.bg).clickable(remember { MutableInteractionSource() }, null) {}
             .statusBarsPadding().navigationBarsPadding().imePadding()
-            .padding(horizontal = Space.gutter).padding(top = 34.dp, bottom = 16.dp),
+            .padding(horizontal = Space.gutter).padding(top = 24.dp, bottom = 16.dp),
     ) {
-        Text("DIA 1", style = Type.caps, color = pal.text2)
-        Text("Por que este hábito?", style = Type.monthTitle.copy(fontSize = 52.sp, lineHeight = 52.sp), color = pal.ink, modifier = Modifier.padding(top = 14.dp))
-        Spacer(Modifier.height(28.dp))
-        LetterField(text, { text = it }, "Quero chegar em março lendo sem esforço.")
-        Spacer(Modifier.weight(1f))
-        InkButton("Guardar para o dia 30", enabled = text.isNotBlank()) { onSeal(text) }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)) {
+            for (i in 0..2) {
+                val c by androidx.compose.animation.animateColorAsState(if (i <= step) pal.ink else pal.rule, tween(Motion.base), label = "step")
+                Box(Modifier.weight(1f).height(2.dp).background(c))
+            }
+        }
+        androidx.compose.animation.AnimatedContent(
+            step, label = "first",
+            transitionSpec = {
+                val dir = if (targetState > initialState) 1 else -1
+                (androidx.compose.animation.slideInHorizontally(tween(Motion.base)) { it / 6 * dir } + fadeIn(tween(Motion.base))) togetherWith
+                    (androidx.compose.animation.slideOutHorizontally(tween(Motion.quick)) { -it / 6 * dir } + androidx.compose.animation.fadeOut(tween(Motion.quick)))
+            },
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+        ) { s ->
+            Column(Modifier.fillMaxSize().padding(top = 30.dp)) {
+                Text("DIA 1", style = Type.caps, color = pal.text2)
+                val title = when (s) { 0 -> "Qual hábito?"; 1 -> "Com que frequência?"; else -> "Por que este hábito?" }
+                Text(title, style = Type.monthTitle.copy(fontSize = 52.sp, lineHeight = 52.sp), color = pal.ink, modifier = Modifier.padding(top = 14.dp))
+                Spacer(Modifier.height(28.dp))
+                when (s) {
+                    0 -> {
+                        LetterField(name, { name = it.replace("\n", "").take(28) }, "Ler 20 páginas", minHeight = 64)
+                        androidx.compose.foundation.layout.FlowRow(
+                            Modifier.padding(top = 18.dp),
+                            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+                            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+                        ) { FIRST_SUGGESTIONS.forEach { sug -> Chip(sug, name == sug) { name = sug } } }
+                    }
+                    1 -> androidx.compose.foundation.layout.FlowRow(
+                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+                        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+                    ) { FIRST_GOALS.forEach { g -> Chip(if (g == 0) "todo dia" else "$g× por semana", goal == g) { goal = g } } }
+                    else -> LetterField(text, { text = it }, "Quero chegar em março lendo sem esforço.")
+                }
+            }
+        }
+        when (step) {
+            0 -> InkButton("Seguir", enabled = name.isNotBlank()) { step = 1 }
+            1 -> InkButton("Seguir") { step = 2 }
+            else -> InkButton(if (text.isNotBlank()) "Guardar para o dia 30" else "Começar") { onDone(name.trim(), goal, text.trim().ifEmpty { null }) }
+        }
         Spacer(Modifier.height(8.dp))
-        QuietButton("Pular", onSkip)
+        if (step == 2 && text.isNotBlank()) QuietButton("Começar sem frase") { onDone(name.trim(), goal, null) }
+        else Spacer(Modifier.height(44.dp))
     }
 }
 

@@ -29,6 +29,7 @@ import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -181,9 +182,21 @@ fun HomeScreen(vm: HabitViewModel) {
             runCatching { vm.export(uri) }.onSuccess { lastBackup = LocalDate.now(); toast("Backup salvo") }.onFailure { toast("Não foi possível salvar o backup") }
         }
     }
+    // Restaurar mostra antes o que vem no arquivo e o que sai; depois de trocar, dá para desfazer.
+    var restore by remember { mutableStateOf<Backup.Preview?>(null) }
+    fun applyRestore(p: Backup.Preview) = scope.launch {
+        restore = null
+        val before = vm.applyImport(p.state)
+        snackJob?.cancel()
+        snackJob = scope.launch {
+            snackbar.currentSnackbarData?.dismiss()
+            val r = snackbar.showSnackbar("${p.state.done.size} dias restaurados", actionLabel = "Desfazer", duration = SnackbarDuration.Long)
+            if (r == SnackbarResult.ActionPerformed) { tick(); vm.applyImport(before) }
+        }
+    }
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) scope.launch {
-            runCatching { vm.import(uri) }.onSuccess { n -> toast("$n dias restaurados") }.onFailure { toast("Arquivo inválido: escolha um backup do Hábito") }
+            runCatching { vm.peekImport(uri) }.onSuccess { restore = it }.onFailure { toast("Arquivo inválido: escolha um backup do Hábito") }
         }
     }
     // Cópia automática: a pasta vem do seletor do sistema; a frequência escolhida espera por ela.
@@ -378,7 +391,7 @@ fun HomeScreen(vm: HabitViewModel) {
 
         // Dia 1: a pergunta. Marco com frase lacrada: a frase abre.
         if (u != null) androidx.compose.animation.AnimatedVisibility(u.empty && !u.state.letterAsked, enter = androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.fadeOut()) {
-            LetterAsk(onSeal = { tick(); vm.sealLetter(30, it) }, onSkip = { tick(); vm.skipLetter() })
+            FirstUse { name, goal, letter -> tick(); vm.setName(name); vm.setGoal(goal); if (letter != null) vm.sealLetter(30, letter) else vm.skipLetter() }
         }
         val letter = opening
         androidx.compose.animation.AnimatedVisibility(letter != null, enter = androidx.compose.animation.fadeIn(tween(350)), exit = androidx.compose.animation.fadeOut(tween(250))) {
@@ -386,8 +399,46 @@ fun HomeScreen(vm: HabitViewModel) {
             LetterReveal(l, u?.today ?: LocalDate.now()) { next -> tick(); vm.closeLetter(l, next); opening = null }
         }
 
+        restore?.let { p -> if (u != null) RestoreConfirm(p, u.state, onConfirm = { tick(); applyRestore(p) }, onCancel = { restore = null }) }
+
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(Space.l)) { data ->
             UndoBar(data.visuals.message, data.visuals.actionLabel) { data.performAction() }
+        }
+    }
+}
+
+/** Antes de restaurar: o que chega e o que sai, em números. Nada é gravado até confirmar. */
+@Composable
+private fun RestoreConfirm(p: Backup.Preview, now: HabitState, onConfirm: () -> Unit, onCancel: () -> Unit) {
+    val pal = Tokens
+    BackHandler(onBack = onCancel)
+    Box(
+        Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.4f)).clickable(remember { MutableInteractionSource() }, null, onClick = onCancel),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            Modifier.padding(Space.gutter).fillMaxWidth().clip(RoundedCornerShape(Radius.panel)).background(pal.bg)
+                .clickable(remember { MutableInteractionSource() }, null) {}.padding(22.dp),
+        ) {
+            Text("RESTAURAR", style = Type.caps, color = pal.text2)
+            Text(p.state.taskName, style = Type.title, color = pal.ink, modifier = Modifier.padding(top = 10.dp))
+            val at = if (p.exportedAt > 0) java.time.Instant.ofEpochMilli(p.exportedAt).atZone(java.time.ZoneId.systemDefault()).toLocalDate() else null
+            Row(Modifier.fillMaxWidth().padding(top = 16.dp)) {
+                Figure("${p.state.done.size}", "dias no arquivo", Type.number, Modifier.weight(1f))
+                Figure("${now.done.size}", "dias agora", Type.number, Modifier.weight(1f))
+            }
+            Text(
+                (at?.let { "Cópia de ${Cal.shortDate(it)}. " } ?: "") + "O histórico atual é substituído; dá para desfazer logo depois.",
+                style = Type.body, color = pal.text2, modifier = Modifier.padding(top = 16.dp),
+            )
+            Row(Modifier.fillMaxWidth().padding(top = 20.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(Modifier.weight(1f).height(48.dp).clip(RoundedCornerShape(Radius.control)).border(1.dp, pal.rule, RoundedCornerShape(Radius.control)).clickable(onClick = onCancel), contentAlignment = Alignment.Center) {
+                    Text("Cancelar", style = Type.bodyL, color = pal.ink, fontWeight = FontWeight.Medium)
+                }
+                Box(Modifier.weight(1f).height(48.dp).clip(RoundedCornerShape(Radius.control)).background(pal.ink).clickable(onClick = onConfirm), contentAlignment = Alignment.Center) {
+                    Text("Restaurar", style = Type.bodyL, color = pal.bg, fontWeight = FontWeight.SemiBold)
+                }
+            }
         }
     }
 }

@@ -115,12 +115,15 @@ class HabitViewModel(app: Application) : AndroidViewModel(app) {
 
     suspend fun export(uri: Uri) = Backup.export(ctx, uri)
 
-    /** Devolve quantos dias feitos voltaram. */
-    suspend fun import(uri: Uri): Int {
-        val n = Backup.import(ctx, uri)
+    suspend fun peekImport(uri: Uri): Backup.Preview = Backup.peek(ctx, uri)
+
+    /** Substitui tudo pelo backup e devolve o estado anterior, para o desfazer. */
+    suspend fun applyImport(s: HabitState): HabitState {
+        val before = HabitStore.load(ctx)
+        HabitStore.replaceAll(ctx, s)
         HabitWidget().updateAll(ctx)
         Reminder.schedule(ctx, HabitStore.load(ctx))
-        return n
+        return before
     }
 
     private fun save(block: suspend () -> Unit) = viewModelScope.launch { block(); HabitWidget().updateAll(ctx) }
