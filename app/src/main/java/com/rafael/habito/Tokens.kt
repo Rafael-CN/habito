@@ -41,6 +41,8 @@ data class Palette(
     val onInk2: Color,     // texto secundário sobre a barra invertida
     val levels: List<Color>,    // 0 = sem registro, 1..4 = sequência crescente
     val levelInk: List<Color>,  // número legível sobre cada tom
+    val glyph: Glyph = Glyph.ASTERISCO,     // o marco desta cor
+    val gesture: Gesture = Gesture.BROTO,   // como o quadrado de hoje se enche ao marcar
 )
 
 object Palettes {
@@ -93,6 +95,13 @@ object Accents {
         "grafite" to c(0xFF2A2A2E, 0xFF4A4A50, 0xFF8A8A90, 0xFFD0D0D4, 0xFFD0D0D4, 0xFF0C0C0D),
     )
 
+    /** Papel tingido: no claro, o fundo ganha um tom quase imperceptível da cor. */
+    private val paper = mapOf(
+        "verde" to 0xFFFBFDFB, "rosa" to 0xFFFFF8FA, "azul" to 0xFFF8FAFE, "oceano" to 0xFFF6FCFB,
+        "violeta" to 0xFFFAF8FE, "ambar" to 0xFFFFFCF4, "terracota" to 0xFFFFF9F5, "grafite" to 0xFFFAFAF8,
+    )
+    fun paper(name: String): Color = Color(paper[name] ?: 0xFFFFFFFF)
+
     /** Tons 1..4, feito e texto sobre o feito para [name] no tema pedido (verde = a paleta base). */
     fun colors(name: String, isDark: Boolean): List<Color>? = (if (isDark) dark else light)[name]
 }
@@ -104,8 +113,12 @@ private fun lum(c: Color): Double {
 fun contrast(a: Color, b: Color): Double { val (h, l) = listOf(lum(a), lum(b)).sortedDescending(); return (h + 0.05) / (l + 0.05) }
 
 /** A paleta do tema com a cor de mapa escolhida. O número sobre cada tom usa o texto que mais contrasta. */
-fun paletteFor(name: String, isDark: Boolean): Palette {
-    val base = if (isDark) Palettes.Dark else Palettes.Light
+fun paletteFor(name: String, isDark: Boolean, paper: Boolean = false): Palette {
+    val plain = if (isDark) Palettes.Dark else Palettes.Light
+    val base = plain.copy(
+        glyph = Glyphs.of(name), gesture = Glyphs.gesture(name),
+        bg = if (paper && !isDark) Accents.paper(name) else plain.bg,
+    )
     val a = Accents.colors(name, isDark) ?: return base
     val levels = listOf(base.levels[0]) + a.subList(0, 4)
     val inks = listOf(base.ink, if (isDark) base.bg else Color.White)

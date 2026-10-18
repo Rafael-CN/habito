@@ -77,7 +77,7 @@ class MainActivity : ComponentActivity() {
                 onDispose { }
             }
             CompositionLocalProvider(LocalRevealed provides revealed.value, LocalReduceMotion provides reduceMotion.value) {
-                HabitTheme(ui?.state?.palette ?: "verde", mode) { HomeScreen(vm) }
+                HabitTheme(ui?.state?.palette ?: "verde", mode, ui?.state?.paper ?: false) { HomeScreen(vm) }
             }
         }
     }
@@ -89,6 +89,8 @@ class MainActivity : ComponentActivity() {
             lifecycleScope.launch { HabitStore.seedDemo(applicationContext); HabitWidget().updateAll(applicationContext) }
         }
         intent?.getStringExtra("seed33")?.let { kind -> lifecycleScope.launch { HabitStore.seed33(applicationContext, kind); HabitWidget().updateAll(applicationContext) } }
+        // `--es palette rosa --ez paper true`: troca a cor (e o papel) sem passar pelos Ajustes.
+        intent?.getStringExtra("palette")?.let { p -> lifecycleScope.launch { HabitStore.setPalette(applicationContext, p); HabitStore.setPaper(applicationContext, intent?.getBooleanExtra("paper", false) == true); IconSwitcher.apply(applicationContext, HabitStore.load(applicationContext)); HabitWidget().updateAll(applicationContext) } }
         if (intent?.getBooleanExtra("show_retro", false) == true) RetroDebug.force = true
         // `--ei render_widget <largura dp>`: a grade do widget, já pintada, em files/widget-<dp>.png (escuro).
         intent?.getIntExtra("render_widget", 0)?.takeIf { it > 0 }?.let { w ->

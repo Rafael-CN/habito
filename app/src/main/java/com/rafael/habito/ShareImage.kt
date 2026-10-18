@@ -26,7 +26,8 @@ object ShareImage {
     private const val H = 1350
     private const val M = 80f
     private val PT = Locale("pt", "BR")
-    private val pal = Palettes.Light
+    /** A cor do mapa escolhida, sempre no claro (o cartão é papel). */
+    private var pal = Palettes.Light
 
     private fun paint(ctx: Context, size: Float, color: Color, weight: Int, width: Int = 100, spacing: Float = 0f) =
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -82,7 +83,7 @@ object ShareImage {
         var x = M
         fill.color = pal.miss.toArgb(); c.drawCircle(x + 6f, y - 9f, 6f, fill); x += 20f
         c.drawText("não fiz", x, y, p); x += p.measureText("não fiz") + 34f
-        c.drawStar(x + 12f, y - 9f, 22f, pal.levels[4].toArgb()); x += 32f
+        c.drawStar(x + 12f, y - 9f, 22f, pal.levels[4].toArgb(), pal.glyph); x += 32f
         c.drawText("marco", x, y, p)
         var r = W - M
         listOf(4 to "7+", 3 to "4–6", 2 to "2–3", 1 to "1").forEach { (l, t) ->
@@ -94,6 +95,7 @@ object ShareImage {
 
     /** O ano: a sequência enorme, as 53 semanas e três números. */
     fun year(ctx: Context, u: HabitUi): Bitmap {
+        pal = paletteFor(u.state.palette, false, u.state.paper)
         val (bmp, c) = frame(ctx, u.state.taskName, "últimos 12 meses")
         val unit = if (u.weekly) (if (u.streak == 1) "semana\nseguida" else "semanas\nseguidas") else (if (u.streak == 1) "dia\nseguido" else "dias\nseguidos")
         val hero = paint(ctx, 420f, pal.ink, 650, 68, -0.045f)
@@ -113,7 +115,7 @@ object ShareImage {
             if (d.isAfter(u.today)) continue
             val x = M + (i / 7) * step; val y = top + (i % 7) * step
             when {
-                d in u.milestones -> c.drawStar(x + size / 2, y + size / 2, size * Motion.STAR, pal.levels[4].toArgb())
+                d in u.milestones -> c.drawStar(x + size / 2, y + size / 2, size * Motion.STAR, pal.levels[4].toArgb(), pal.glyph)
                 d in u.state.scars -> { cell(c, x, y, size, pal.levels[0], false, null); c.drawStitch(x, y, size, step - size, pal.gold.toArgb()) }
                 d in u.state.tropes -> { cell(c, x, y, size, pal.levels[0], false, null); c.drawTrope(x, y, size, pal.text3.toArgb()) }
                 else -> cell(c, x, y, size, pal.levels[u.level(d)], u.markOf(d) == Mark.MISSED, null)
@@ -126,6 +128,7 @@ object ShareImage {
 
     /** O mês da retrospectiva: nome grande, quantos dias, o calendário. */
     fun month(ctx: Context, u: HabitUi, m: YearMonth, r: Retro): Bitmap {
+        pal = paletteFor(u.state.palette, false, u.state.paper)
         val (bmp, c) = frame(ctx, "Retrospectiva · ${u.state.taskName}", "${m.year}")
         val name = m.format(DateTimeFormatter.ofPattern("MMMM", PT)).replaceFirstChar { it.uppercase() }
         c.drawText(name, M - 8f, 310f, paint(ctx, 176f, pal.ink, 640, 72, -0.035f))
@@ -158,7 +161,7 @@ object ShareImage {
                 d in u.state.tropes -> c.drawTrope(x + size - 34f, y + small - 34f, 26f, pal.text3.toArgb())
                 u.markOf(d) == Mark.MISSED -> c.drawCircle(x + size - 16f, y + small - 16f, 6f, Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = pal.miss.toArgb() })
             }
-            if (!out && d in u.milestones) c.drawStar(x + size - 22f, y + small - 22f, 26f, pal.levelInk[u.level(d)].toArgb())
+            if (!out && d in u.milestones) c.drawStar(x + size - 22f, y + small - 22f, 26f, pal.levelInk[u.level(d)].toArgb(), pal.glyph)
         }
         figures(ctx, c, 1120f, listOf("${r.pct}%" to "do mês", "${r.longest}" to "maior sequência", r.deltaLabel to "vs. mês anterior"))
         footer(ctx, c)

@@ -29,6 +29,7 @@ fun lerpPalette(a: Palette, b: Palette, t: Float): Palette = when {
         gold = lerp(a.gold, b.gold, t), onInk2 = lerp(a.onInk2, b.onInk2, t),
         levels = a.levels.zip(b.levels) { x, y -> lerp(x, y, t) },
         levelInk = a.levelInk.zip(b.levelInk) { x, y -> lerp(x, y, t) },
+        glyph = if (t < 0.5f) a.glyph else b.glyph, gesture = if (t < 0.5f) a.gesture else b.gesture,
     )
 }
 
@@ -41,11 +42,11 @@ fun isDark(mode: Int): Boolean = when (mode) { 1 -> false; 2 -> true; else -> is
  * para o cursor e a seleção de texto. Trocar claro/escuro ou a cor do mapa faz crossfade em vez de piscar.
  */
 @Composable
-fun HabitTheme(palette: String = "verde", mode: Int = 0, content: @Composable () -> Unit) {
+fun HabitTheme(palette: String = "verde", mode: Int = 0, paper: Boolean = false, content: @Composable () -> Unit) {
     val dark = isDark(mode)
     val reduce = LocalReduceMotion.current
     val t by animateFloatAsState(if (dark) 1f else 0f, if (reduce) snap() else tween(Motion.theme), label = "theme")
-    val target = remember(palette, t) { lerpPalette(paletteFor(palette, false), paletteFor(palette, true), t) }
+    val target = remember(palette, paper, t) { lerpPalette(paletteFor(palette, false, paper), paletteFor(palette, true, paper), t) }
     val shown = remember { mutableStateOf(target) }
     val from = remember { mutableStateOf(target) }
     val swap = remember { Animatable(1f) }

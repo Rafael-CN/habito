@@ -21,6 +21,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -472,6 +473,15 @@ internal fun WeekStrip(u: HabitUi, ripple: Int, onDay: (LocalDate) -> Unit) {
                 val scar = d in u.state.scars
                 val call = isToday && mark == null && u.state.pendingTrope
                 val breathe = if (call) callBreath() else 0f
+                // Hoje marcado: o quadrado se enche no gesto da cor (broto, flor, gota, maré…).
+                val gesture = remember { Animatable(1f) }
+                val wasDone = remember { mutableStateOf(mark == Mark.DONE) }
+                val reduceMotion = LocalReduceMotion.current
+                LaunchedEffect(isToday, mark) {
+                    val was = wasDone.value
+                    wasDone.value = mark == Mark.DONE
+                    if (isToday && mark == Mark.DONE && !was && !reduceMotion) { gesture.snapTo(0f); gesture.animateTo(1f, tween(if (pal.gesture == Gesture.TRACO) 700 else 620, easing = LinearEasing)) }
+                }
                 Box(
                     Modifier.fillMaxWidth().aspectRatio(1f)
                         .graphicsLayer { translationY = -4.dp.toPx() * lift.value; scaleX = scale; scaleY = scale }
@@ -479,7 +489,8 @@ internal fun WeekStrip(u: HabitUi, ripple: Int, onDay: (LocalDate) -> Unit) {
                 ) {
                     Canvas(Modifier.fillMaxSize()) {
                         val r = CornerRadius(Radius.cell.toPx())
-                        drawRoundRect(color, cornerRadius = r)
+                        if (gesture.value < 1f) gestureFill(pal.gesture, gesture.value, pal.levels[0], pal.levels[level], r.x)
+                        else drawRoundRect(color, cornerRadius = r)
                         if (scar) stitch(pal, Offset.Zero, size.width, size.height, 6.dp.toPx(), vertical = false)
                         else if (trope) tropeMark(pal, Offset(size.width - 17.dp.toPx(), size.height - 17.dp.toPx()), 13.dp.toPx(), 2.dp.toPx())
                         else if (mark == Mark.MISSED) drawCircle(pal.miss, 2.5.dp.toPx(), Offset(size.width - 8.5.dp.toPx(), size.height - 8.5.dp.toPx()))
@@ -490,7 +501,7 @@ internal fun WeekStrip(u: HabitUi, ripple: Int, onDay: (LocalDate) -> Unit) {
                             drawRoundRect(pal.ink, Offset(i, i), Size(size.width - 2 * i, size.height - 2 * i), r, style = Stroke(1.5.dp.toPx()))
                         }
                         // Marco: asterisco no canto, na cor do número.
-                        if (d in u.milestones) star(ink, Offset(size.width - 10.dp.toPx(), size.height - 10.dp.toPx()), 12.dp.toPx())
+                        if (d in u.milestones) star(ink, Offset(size.width - 10.dp.toPx(), size.height - 10.dp.toPx()), 12.dp.toPx(), glyph = pal.glyph)
                     }
                     Text("${d.dayOfMonth}", style = Type.caption.copy(lineHeight = 12.sp), color = ink, fontWeight = FontWeight.Medium, modifier = Modifier.padding(start = 6.dp, top = 5.dp))
                 }

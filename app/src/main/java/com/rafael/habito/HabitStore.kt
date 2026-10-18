@@ -85,6 +85,8 @@ data class HabitState(
     val backupUri: String = "",               // pasta escolhida (árvore SAF)
     val backupAt: Long = 0L,                  // última cópia (epoch ms)
     val backupNudge: Long = 0L,               // quando o aviso de cópia atrasada apareceu no Hoje
+    val paper: Boolean = false,               // papel tingido: no claro, o fundo ganha um tom da cor
+    val iconFollows: Boolean = true,          // o ícone do app acompanha a cor do mapa
 ) {
     /** A próxima frase ainda lacrada. */
     val sealed: Letter? get() = letters.firstOrNull { it.opened == null }
@@ -319,6 +321,8 @@ object HabitStore {
     private val BACKUP_URI = stringPreferencesKey("backup_uri")
     private val BACKUP_AT = androidx.datastore.preferences.core.longPreferencesKey("backup_at")
     private val BACKUP_NUDGE = androidx.datastore.preferences.core.longPreferencesKey("backup_nudge")
+    private val PAPER = androidx.datastore.preferences.core.booleanPreferencesKey("paper")
+    private val ICON_FOLLOWS = androidx.datastore.preferences.core.booleanPreferencesKey("icon_follows")
     const val MAX_REMINDERS = 3
     const val MAX_REST = 3
 
@@ -366,6 +370,8 @@ object HabitStore {
         backupUri = this[BACKUP_URI] ?: "",
         backupAt = this[BACKUP_AT] ?: 0L,
         backupNudge = this[BACKUP_NUDGE] ?: 0L,
+        paper = this[PAPER] ?: false,
+        iconFollows = this[ICON_FOLLOWS] ?: true,
     )
 
     suspend fun load(ctx: Context): HabitState = ctx.store.data.first().toState()
@@ -407,6 +413,8 @@ object HabitStore {
     suspend fun setBackup(ctx: Context, freq: Int, uri: String) = ctx.store.edit { it[BACKUP_FREQ] = freq; it[BACKUP_URI] = uri }
     suspend fun setBackupAt(ctx: Context, at: Long) = ctx.store.edit { it[BACKUP_AT] = at }
     suspend fun setBackupNudge(ctx: Context, at: Long) = ctx.store.edit { it[BACKUP_NUDGE] = at }
+    suspend fun setPaper(ctx: Context, on: Boolean) = ctx.store.edit { it[PAPER] = on }
+    suspend fun setIconFollows(ctx: Context, on: Boolean) = ctx.store.edit { it[ICON_FOLLOWS] = on }
 
     /** Define a marca de um dia. `mark = null` limpa. */
     suspend fun setMark(ctx: Context, date: LocalDate, mark: Mark?) {
@@ -450,6 +458,7 @@ object HabitStore {
             p[MONDAY] = s.mondayFirst
             p[HAPTICS] = s.haptics
             p[CELEBRATE] = s.celebrate
+            p[PAPER] = s.paper
             p[LETTERS] = Letter.encode(s.letters)
             if (s.letters.isNotEmpty()) p[LETTER_ASKED] = true
         }

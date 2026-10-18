@@ -170,7 +170,7 @@ private fun MiniMonth(u: HabitUi, m: YearMonth) {
                                     d in u.state.tropes -> tropeMark(pal, Offset(size.width - 15.dp.toPx(), size.height - 15.dp.toPx()), 11.dp.toPx(), 2.dp.toPx())
                                     u.markOf(d) == Mark.MISSED -> drawCircle(pal.miss, 2.5.dp.toPx(), Offset(size.width - 8.dp.toPx(), size.height - 8.dp.toPx()))
                                 }
-                                if (!out && d in u.milestones) star(pal.levelInk[level], Offset(size.width - 9.dp.toPx(), size.height - 9.dp.toPx()), 10.dp.toPx())
+                                if (!out && d in u.milestones) star(pal.levelInk[level], Offset(size.width - 9.dp.toPx(), size.height - 9.dp.toPx()), 10.dp.toPx(), glyph = pal.glyph)
                             }
                             Text("$day", style = Type.caption, color = if (out) pal.text3 else pal.levelInk[level], fontWeight = FontWeight.Medium, modifier = Modifier.padding(start = 6.dp, top = 4.dp))
                         }

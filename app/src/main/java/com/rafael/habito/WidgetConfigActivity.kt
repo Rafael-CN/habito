@@ -56,7 +56,7 @@ class WidgetConfigActivity : ComponentActivity() {
             val s by flow.collectAsStateWithLifecycle()
             val state = s ?: return@setContent
             val scope = rememberCoroutineScope()
-            HabitTheme(state.palette, state.themeMode) {
+            HabitTheme(state.palette, state.themeMode, state.paper) {
                 WidgetConfig(state.widgets[id] ?: WidgetOpts(), large = isLarge(id), onChange = { o ->
                     scope.launch { HabitStore.setWidget(applicationContext, id, o); HabitWidget().updateAll(applicationContext) }
                 }, onDone = { finish() })

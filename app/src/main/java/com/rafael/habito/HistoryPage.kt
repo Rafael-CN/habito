@@ -162,7 +162,7 @@ internal fun HistoriaPage(
         }
 
         Row(Modifier.fillMaxWidth().padding(top = 40.dp, bottom = 80.dp)) {
-            Text("Hábito 4.1", style = Type.caption, color = pal.text3, modifier = Modifier.weight(1f))
+            Text("Hábito 4.2", style = Type.caption, color = pal.text3, modifier = Modifier.weight(1f))
             Text("um hábito, um quadrado por dia", style = Type.caption, color = pal.text3)
         }
     }
@@ -221,7 +221,7 @@ private fun LetterRow(l: Letter) {
     val pal = Tokens
     Column(Modifier.fillMaxWidth().padding(vertical = 14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Canvas(Modifier.size(12.dp)) { star(pal.levels[4], center, size.width) }
+            Canvas(Modifier.size(12.dp)) { star(pal.levels[4], center, size.width, glyph = pal.glyph) }
             Spacer(Modifier.width(8.dp))
             Text("dia ${l.forDay} · escrita em ${Cal.shortDate(l.written).substringAfter(", ")}", style = Type.caption, color = pal.text3)
         }

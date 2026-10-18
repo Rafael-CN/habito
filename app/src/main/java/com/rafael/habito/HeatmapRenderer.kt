@@ -16,18 +16,6 @@ class GridLayers(
     val scar: Bitmap? = null, val trope: Bitmap? = null, val call: Boolean = false,
 )
 
-/** Asterisco de seis pontas (o marco), em pixels. */
-fun Canvas.drawStar(cx: Float, cy: Float, len: Float, color: Int) {
-    val w = len * 0.185f
-    val half = (len - w) / 2
-    val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color; strokeWidth = w; strokeCap = Paint.Cap.ROUND; style = Paint.Style.STROKE }
-    for (k in 0 until 3) {
-        val a = Math.toRadians((k * 60.0 - 90.0))
-        val dx = (kotlin.math.cos(a) * half).toFloat(); val dy = (kotlin.math.sin(a) * half).toFloat()
-        drawLine(cx - dx, cy - dy, cx + dx, cy + dy, p)
-    }
-}
-
 /** Costura vertical numa célula da grade: linha que encosta nos vizinhos e um ponto no meio. */
 fun Canvas.drawStitch(x: Float, y: Float, size: Float, gap: Float, color: Int) {
     val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color }
@@ -107,7 +95,7 @@ object HeatmapRenderer {
             // Marco: o asterisco no lugar do quadrado, no tom mais forte.
             if (d in milestones) {
                 val lb = levelLayers[4] ?: layer().also { levelLayers[4] = it }
-                draw(lb).drawStar(rect.centerX(), rect.centerY(), cell * Motion.STAR, android.graphics.Color.BLACK)
+                draw(lb).drawStar(rect.centerX(), rect.centerY(), cell * Motion.STAR, android.graphics.Color.BLACK, Glyphs.of(state.palette))
                 continue
             }
             val lb = levelLayers[level] ?: layer().also { levelLayers[level] = it }

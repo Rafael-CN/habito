@@ -52,6 +52,17 @@ class ContrastTest {
         }
     }
 
+    /** Papel tingido: os textos continuam legíveis sobre o fundo com o tom da cor. */
+    @Test fun `papel tingido`() {
+        for (name in Accents.NAMES) {
+            val p = paletteFor(name, false, paper = true)
+            atLeast(7.0, p.ink, p.bg, "$name papel texto")
+            atLeast(4.5, p.text3, p.bg, "$name papel legenda")
+            atLeast(3.0, p.done, p.bg, "$name papel feito")
+            atLeast(3.0, p.line, p.bg, "$name papel borda")
+        }
+    }
+
     @Test fun `tema claro`() = check(Palettes.Light, "claro")
 
     @Test fun `tema escuro`() = check(Palettes.Dark, "escuro")

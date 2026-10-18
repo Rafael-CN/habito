@@ -279,7 +279,7 @@ private fun DayCell(u: HabitUi, d: LocalDate, picked: Boolean, onDay: (LocalDate
             else if (trope) tropeMark(pal, Offset(size.width - 17.dp.toPx(), size.height - 17.dp.toPx()), 13.dp.toPx(), 2.dp.toPx())
             else if (mark == Mark.MISSED) drawCircle(pal.miss, 2.5.dp.toPx(), Offset(size.width - 8.5.dp.toPx(), size.height - 8.5.dp.toPx()))
             else if (!out && u.state.isRest(d) && d != u.today) drawRect(pal.text3.copy(alpha = 0.7f), Offset(size.width - 16.dp.toPx(), size.height - 9.dp.toPx()), Size(8.dp.toPx(), 1.5.dp.toPx()))
-            if (!out && d in u.milestones) star(number, Offset(size.width - 10.dp.toPx(), size.height - 10.dp.toPx()), 12.dp.toPx())
+            if (!out && d in u.milestones) star(number, Offset(size.width - 10.dp.toPx(), size.height - 10.dp.toPx()), 12.dp.toPx(), glyph = pal.glyph)
             if (call) callRing(pal, Offset.Zero, size.width, size.height, r.x, breathe)
             else if (!out && d == u.today && mark == null) {
                 val i = 0.75.dp.toPx()

@@ -89,6 +89,7 @@ class SettingsActions(
     val onSeal: (Int, String) -> Unit, val onUnseal: () -> Unit,
     val onBackupFreq: (Int) -> Unit, val onBackupFolder: () -> Unit, val onBackupNow: () -> Unit,
     val onAddTile: (() -> Unit)?,
+    val onPaper: (Boolean) -> Unit, val onIconFollows: (Boolean) -> Unit,
     val onShareError: (() -> Unit)?,
     val tick: () -> Unit,
 )
@@ -205,6 +206,8 @@ internal fun SettingsContent(s: HabitState, unrestricted: Boolean, lastBackup: L
         }
         Swatches(s.palette) { a.tick(); a.onPalette(it) }
         PalettePreview(s)
+        SwitchRow("Papel tingido", "No claro, o fundo ganha um tom da cor.", s.paper) { a.tick(); a.onPaper(it) }
+        SwitchRow("Ícone na cor", "O ícone do app troca junto com a cor do mapa.", s.iconFollows) { a.tick(); a.onIconFollows(it) }
         Labeled("Tema") { Track(listOf("Sistema", "Claro", "Escuro"), s.themeMode, { a.tick(); a.onTheme(it) }, Modifier.width(210.dp)) }
         Labeled("A semana começa") { Track(listOf("Domingo", "Segunda"), if (s.mondayFirst) 1 else 0, { a.tick(); a.onMonday(it == 1) }, Modifier.width(210.dp)) }
 
@@ -276,7 +279,7 @@ internal fun SettingsContent(s: HabitState, unrestricted: Boolean, lastBackup: L
             }
         }
         Text(
-            "Hábito 4.1 · fonte Archivo (OFL) · seus dados ficam só neste aparelho",
+            "Hábito 4.2 · fonte Archivo (OFL) · seus dados ficam só neste aparelho",
             style = Type.caption, color = pal.text3, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             modifier = Modifier.fillMaxWidth().padding(top = 22.dp, bottom = 8.dp),
         )

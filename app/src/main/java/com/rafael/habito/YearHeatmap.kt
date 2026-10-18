@@ -71,20 +71,6 @@ private val MONTH_H = 34.dp
 private val LABEL_W = 30.dp
 private val FADE_W = 18.dp
 
-/**
- * Asterisco de seis pontas: três braços de ponta redonda. É o marco, no lugar do quadrado.
- * [len] é a ponta a ponta; [turn] gira em graus (60° volta à mesma forma).
- */
-fun DrawScope.star(color: Color, center: Offset, len: Float, turn: Float = 0f) {
-    val w = len * 0.185f
-    val half = (len - w) / 2
-    for (k in 0 until 3) {
-        val a = Math.toRadians((turn + k * 60f - 90f).toDouble())
-        val d = Offset(kotlin.math.cos(a).toFloat() * half, kotlin.math.sin(a).toFloat() * half)
-        drawLine(color, center - d, center + d, strokeWidth = w, cap = StrokeCap.Round)
-    }
-}
-
 /** "feito", "tropeço", "fora · voltou 15 out", "não fiz", "descanso" ou "sem registro". */
 fun dayState(u: HabitUi, d: LocalDate): String = when {
     d in u.state.scars -> u.state.runs.firstOrNull { it.start.isAfter(d) }?.let { "fora · voltou ${Cal.shortDate(it.start).substringAfter(", ")}" } ?: "fora"
@@ -97,7 +83,7 @@ fun dayState(u: HabitUi, d: LocalDate): String = when {
 
 /** Marco numa célula pequena: o quadrado vira asterisco, um pouco maior que ele. */
 fun DrawScope.starCell(pal: Palette, tl: Offset, size: Float, turn: Float = 0f, scale: Float = 1f, alpha: Float = 1f) =
-    star(pal.levels[4].copy(alpha = alpha), tl + Offset(size / 2, size / 2), size * Motion.STAR * scale, turn)
+    star(pal.levels[4].copy(alpha = alpha), tl + Offset(size / 2, size / 2), size * Motion.STAR * scale, turn, pal.glyph)
 
 /**
  * Costura: a linha dourada atravessa a lacuna de uma quebra (encostando nos vizinhos pela fresta [gap])
@@ -233,8 +219,8 @@ fun YearHeatmap(
     // Asteriscos: de tempos em tempos giram 60° em fila (a forma volta igual), como quem pisca.
     val turn = remember { Animatable(0f) }
     val stars = cells.stars
-    LaunchedEffect(stars.size, reduce) {
-        if (reduce || stars.isEmpty()) return@LaunchedEffect
+    LaunchedEffect(stars.size, reduce, pal.glyph) {
+        if (reduce || stars.isEmpty() || pal.glyph.symmetry == 0f) return@LaunchedEffect
         while (true) {
             delay(Motion.STAR_EVERY)
             turn.snapTo(0f)
@@ -244,7 +230,7 @@ fun YearHeatmap(
     }
     fun starAngle(k: Int): Float {
         val local = (turn.value - 0.12f * (stars.size - 1 - k)).coerceIn(0f, 1f) // o mais recente gira primeiro
-        return FastOutSlowInEasing.transform(local) * 60f
+        return FastOutSlowInEasing.transform(local) * pal.glyph.symmetry
     }
     // Costura: quando uma quebra ganha costura (a volta aconteceu), a linha corre e o ponto entra.
     val sewn = remember { mutableStateOf(cells.scars) }
@@ -529,7 +515,7 @@ fun Legend(hint: Boolean) {
                 Canvas(Modifier.size(5.dp)) { drawCircle(pal.miss) }
                 Text(" não fiz", style = Type.caption, color = pal.text2)
                 Spacer(Modifier.width(Space.m))
-                Canvas(Modifier.size(10.dp)) { star(pal.levels[4], center, size.width) }
+                Canvas(Modifier.size(10.dp)) { star(pal.levels[4], center, size.width, glyph = pal.glyph) }
                 Text(" marco", style = Type.caption, color = pal.text2)
             }
         }

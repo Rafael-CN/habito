@@ -212,7 +212,7 @@ fun LetterReveal(letter: Letter, day: java.time.LocalDate, onClose: (next: Strin
     LaunchedEffect(Unit) {
         if (reduce) return@LaunchedEffect
         arms.forEachIndexed { k, a -> launch { delay(150L + k * 150L); a.animateTo(1f, tween(500, easing = FastOutSlowInEasing)) } }
-        launch { delay(900); turn.animateTo(60f, tween(1400, easing = androidx.compose.animation.core.CubicBezierEasing(0.6f, 0f, 0.2f, 1f))) }
+        if (pal.glyph.symmetry > 0f) launch { delay(900); turn.animateTo(pal.glyph.symmetry, tween(1400, easing = androidx.compose.animation.core.CubicBezierEasing(0.6f, 0f, 0.2f, 1f))) }
         delay(1500)
         quote.animateTo(1f, tween(800, easing = FastOutSlowInEasing))
     }
@@ -228,15 +228,8 @@ fun LetterReveal(letter: Letter, day: java.time.LocalDate, onClose: (next: Strin
       LaunchedEffect(writing) { if (writing) { delay(350); scroll.animateScrollTo(scroll.maxValue) } }
       Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll).padding(top = 56.dp, bottom = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Canvas(Modifier.size(92.dp).graphicsLayer { rotationZ = turn.value }) {
-            val len = size.width
-            val w = len * 0.15f
-            val half = (len - w) / 2
-            for (k in 0 until 3) {
-                val a = Math.toRadians(k * 60.0 - 90.0)
-                val d = Offset(kotlin.math.cos(a).toFloat() * half, kotlin.math.sin(a).toFloat() * half)
-                val from = center - d
-                drawLine(pal.levels[4], from, from + d * 2f * arms[k].value, strokeWidth = w, cap = StrokeCap.Round)
-            }
+            val grow = arms.sumOf { it.value.toDouble() }.toFloat() / 3f
+            star(pal.levels[4], center, size.width * grow, (1f - grow) * -90f, pal.glyph)
         }
         Text("${letter.forDay}", style = Type.hero.copy(fontSize = 96.sp, lineHeight = 90.sp), color = pal.ink, modifier = Modifier.padding(top = 26.dp))
         Text(day.format(LETTER_DATE).replace(".", ""), style = Type.body, color = pal.text3, modifier = Modifier.padding(top = 14.dp))

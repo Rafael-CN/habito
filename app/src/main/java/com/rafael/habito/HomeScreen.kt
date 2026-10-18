@@ -370,6 +370,7 @@ fun HomeScreen(vm: HabitViewModel) {
                     },
                     onBackupFolder = { pendingFreq = maxOf(u.state.backupFreq, 1); folderPicker.launch(null) },
                     onBackupNow = { backupNow() },
+                    onPaper = vm::setPaper, onIconFollows = vm::setIconFollows,
                     onShareError = if (CrashLog.exists(ctx)) ({ CrashLog.share(ctx) }) else null,
                     onAddTile = if (Build.VERSION.SDK_INT >= 33) ({ HabitTileService.requestAdd(ctx) { added -> if (added) toast("Bloco adicionado") } }) else null,
                     onAddWidget = { small ->
