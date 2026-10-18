@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Calma editorial, claro. Espelhada em Tokens.kt (PaletteSyncTest confere). -->
+<resources>
+    <color name="hb_bg">#FFFFFF</color>
+    <color name="hb_bg_glass">#C7FFFFFF</color>
+    <color name="hb_surface">#F4F4F3</color>
+    <color name="hb_rule">#E3E3E3</color>
+    <color name="hb_line">#757575</color>
+    <color name="hb_ink">#0E0E0E</color>
+    <color name="hb_text2">#545454</color>
+    <color name="hb_text3">#6E6E6E</color>
+    <color name="hb_done">#12813F</color>
+    <color name="hb_on_done">#FFFFFF</color>
+    <color name="hb_miss">#D1242F</color>
+    <color name="hb_gold">#A87700</color>
+    <color name="hb_l0">#E3E3E2</color>
+    <color name="hb_l1">#BFE4C7</color>
+    <color name="hb_l2">#6CC286</color>
+    <color name="hb_l3">#2C9A53</color>
+    <color name="hb_l4">#0C6A32</color>
+    <color name="hb_icon_bg">#0C0C0D</color>
+    <color name="hb_ripple">#260E0E0E</color>
+</resources>

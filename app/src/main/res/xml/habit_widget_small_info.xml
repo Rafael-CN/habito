@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- O mesmo widget, começando em 2×2 (número, semana e ✓); encolhe até 2×1 (número e ✓) e cresce até virar o grande. -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:initialLayout="@layout/glance_default_loading_layout"
+    android:minWidth="110dp"
+    android:minHeight="110dp"
+    android:minResizeWidth="110dp"
+    android:minResizeHeight="50dp"
+    android:targetCellWidth="2"
+    android:targetCellHeight="2"
+    android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="1800000"
+    android:widgetFeatures="reconfigurable|configuration_optional"
+    android:configure="com.rafael.habito.WidgetConfigActivity"
+    android:description="@string/widget_small_description"
+    android:previewImage="@drawable/widget_small_preview"
+    android:widgetCategory="home_screen" />

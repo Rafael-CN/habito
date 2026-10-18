@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Hábito</string>
+    <string name="widget_description">Mapa de calor da sua tarefa diária, no estilo do GitHub, com botão para marcar o dia.</string>
+    <string name="widget_small_description">Versão compacta: a sequência, a última semana e o botão de marcar.</string>
+    <string name="widget_small_label">Hábito · compacto</string>
+</resources>

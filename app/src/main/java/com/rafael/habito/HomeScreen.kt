@@ -1,0 +1,598 @@
+package com.rafael.habito
+
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.os.PowerManager
+import android.provider.Settings
+import android.view.HapticFeedbackConstants
+import android.widget.Toast
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.PredictiveBackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.layout.layout
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Icon
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.time.LocalDate
+import java.time.YearMonth
+import kotlin.math.roundToInt
+
+private fun describe(date: LocalDate, today: LocalDate, mark: Mark?): String {
+    val day = if (date == today) "Hoje" else Cal.shortDate(date).replaceFirstChar { it.uppercase() }
+    return "$day · " + when (mark) { Mark.DONE -> "feito"; Mark.MISSED -> "não fiz"; null -> "sem registro" }
+}
+
+private val OPEN = CubicBezierEasing(0.22f, 0.9f, 0.26f, 1f)
+private val CLOSE = CubicBezierEasing(0.4f, 0f, 0.2f, 1f)
+private val SHEET = CubicBezierEasing(0.32f, 0.72f, 0f, 1f)
+
+/**
+ * A casca: duas abas (Hoje para agir, História para olhar para trás) que se trocam tocando ou deslizando, a
+ * engrenagem que sobe os Ajustes numa folha, e o mês e a retrospectiva abrindo recortados a partir de onde foram
+ * tocados. Toda mudança de dia passa por [change], que vibra, grava e oferece desfazer.
+ */
+@Composable
+fun HomeScreen(vm: HabitViewModel) {
+    val ctx = LocalContext.current
+    val view = LocalView.current
+    val scope = rememberCoroutineScope()
+    val ui by vm.ui.collectAsStateWithLifecycle()
+    val u = ui
+    val pal = Tokens
+    val reduce = LocalReduceMotion.current
+    var selected by rememberSaveable { mutableStateOf<LocalDate?>(null) }
+    var ripple by remember { mutableIntStateOf(0) } // a semana e o ano acendem quando um marco é alcançado
+    var period by rememberSaveable { mutableIntStateOf(0) } // 0 = 12 meses, ou um ano
+    val snackbar = remember { SnackbarHostState() }
+    var snackJob by remember { mutableStateOf<Job?>(null) }
+    val pager = rememberPagerState { 2 }
+    val hojeScroll = rememberScrollState()
+    val histScroll = rememberScrollState()
+
+    fun toast(msg: String) = Toast.makeText(ctx, msg, Toast.LENGTH_SHORT).show()
+    fun buzz(kind: Int) { if (u?.state?.haptics != false) view.performHapticFeedback(kind) }
+    fun tick() = buzz(HapticFeedbackConstants.CLOCK_TICK)
+
+    fun change(date: LocalDate, mark: Mark?) {
+        val cur = u ?: return
+        val previous = cur.markOf(date)
+        buzz(when (mark) { Mark.DONE -> HapticFeedbackConstants.CONFIRM; Mark.MISSED -> HapticFeedbackConstants.REJECT; null -> HapticFeedbackConstants.CLOCK_TICK })
+        vm.setMark(date, mark)
+        snackJob?.cancel()
+        snackJob = scope.launch {
+            snackbar.currentSnackbarData?.dismiss()
+            val r = snackbar.showSnackbar(describe(date, cur.today, mark), actionLabel = "Desfazer", duration = SnackbarDuration.Short)
+            if (r == SnackbarResult.ActionPerformed) { tick(); vm.setMark(date, previous) }
+        }
+    }
+
+    // Marco alcançado ao marcar hoje: a sequência acende e o aparelho dá três pulsos (se "comemorar" estiver ligado).
+    val streak = u?.streak
+    val lastStreak = remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(streak) {
+        val before = lastStreak.value
+        lastStreak.value = streak
+        val cur = u
+        if (cur != null && cur.state.celebrate && streak != null && before != null && streak > before && isMilestone(streak, cur.weekly) && cur.todayMark == Mark.DONE) {
+            ripple++
+            if (cur.state.haptics) Haptics.milestone(ctx)
+        }
+    }
+
+    val selectedMark = selected?.let { u?.markOf(it) }
+    LaunchedEffect(selected, selectedMark) { if (selected != null) { delay(3600); selected = null } }
+    LaunchedEffect(histScroll.isScrollInProgress, pager.currentPage) { if (histScroll.isScrollInProgress || pager.currentPage == 0) selected = null }
+
+    var lastBackup by rememberSaveable { mutableStateOf<LocalDate?>(null) }
+    val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) scope.launch {
+            runCatching { vm.export(uri) }.onSuccess { lastBackup = LocalDate.now(); toast("Backup salvo") }.onFailure { toast("Não foi possível salvar o backup") }
+        }
+    }
+    val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) scope.launch {
+            runCatching { vm.import(uri) }.onSuccess { n -> toast("$n dias restaurados") }.onFailure { toast("Arquivo inválido: escolha um backup do Hábito") }
+        }
+    }
+    // Cópia automática: a pasta vem do seletor do sistema; a frequência escolhida espera por ela.
+    var pendingFreq by remember { mutableIntStateOf(2) }
+    val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) runCatching { vm.setBackup(pendingFreq, uri) }.onFailure { toast("Não foi possível usar essa pasta") }
+    }
+    fun backupNow() = scope.launch { if (vm.backupNow()) toast("Cópia guardada") else { pendingFreq = maxOf(u?.state?.backupFreq ?: 2, 1); folderPicker.launch(null) } }
+
+    // Frase do dia 1: aberta quando a sequência chega ao dia dela.
+    var opening by remember { mutableStateOf<Letter?>(null) }
+    val toOpen = u?.state?.letterToOpen
+    LaunchedEffect(toOpen) { if (toOpen != null && opening == null) { delay(if (reduce) 0 else 1100); opening = toOpen } }
+
+    val notifPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (!granted) toast("Sem permissão de notificação, o lembrete não aparece")
+    }
+    var unrestricted by remember { mutableStateOf(false) }
+    LifecycleResumeEffect(Unit) {
+        unrestricted = ctx.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(ctx.packageName)
+        onPauseOrDispose { }
+    }
+
+    // ---------- sobreposições: mês e retrospectiva, cada uma recortada a partir do retângulo tocado
+    var month by rememberSaveable { mutableStateOf<YearMonth?>(null) }
+    var monthFrom by remember { mutableStateOf(Rect.Zero) }
+    var yearRect by remember { mutableStateOf(Rect.Zero) }
+    val monthReveal = remember { Animatable(0f) }
+    var shownMonth by remember { mutableStateOf<YearMonth?>(null) }
+    LaunchedEffect(month) { shownMonth = reveal(month, shownMonth, monthReveal, reduce) { shownMonth = it } }
+
+    var retro by rememberSaveable { mutableStateOf<YearMonth?>(null) }
+    var retroFrom by remember { mutableStateOf(Rect.Zero) }
+    val retroReveal = remember { Animatable(0f) }
+    var shownRetro by remember { mutableStateOf<YearMonth?>(null) }
+    LaunchedEffect(retro) { shownRetro = reveal(retro, shownRetro, retroReveal, reduce) { shownRetro = it } }
+    // Na primeira semana do mês, uma vez, a retrospectiva do mês que passou (se houve registro nele).
+    LaunchedEffect(u?.today, RetroDebug.force) {
+        val cur = u ?: return@LaunchedEffect
+        val prev = YearMonth.from(cur.today).minusMonths(1)
+        if ((RetroDebug.force || (cur.today.dayOfMonth <= 7 && cur.state.retroSeen != prev.toString())) && hasData(cur, prev)) {
+            RetroDebug.force = false; retroFrom = Rect.Zero; retro = prev
+        }
+    }
+    fun closeRetro() { retro?.let { if (it == YearMonth.from(u!!.today).minusMonths(1)) vm.setRetroSeen(it) }; retro = null }
+    fun share(kind: String) {
+        val cur = u ?: return
+        tick()
+        scope.launch {
+            val bmp = withContext(Dispatchers.Default) {
+                if (kind == "ano") ShareImage.year(ctx, cur) else ShareImage.month(ctx, cur, shownRetro!!, retroOf(cur, shownRetro!!))
+            }
+            runCatching { ShareImage.share(ctx, bmp, "habito-$kind") }.onFailure { toast("Não foi possível compartilhar") }
+        }
+    }
+
+    // ---------- folha de ajustes
+    var sheetOpen by rememberSaveable { mutableStateOf(false) }
+    val sheet = remember { Animatable(0f) } // 0 = fechada, 1 = aberta
+    var sheetDrag by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(sheetOpen) {
+        if (reduce) sheet.snapTo(if (sheetOpen) 1f else 0f) else sheet.animateTo(if (sheetOpen) 1f else 0f, tween(if (sheetOpen) 560 else 420, easing = SHEET))
+        if (!sheetOpen) sheetDrag = 0f
+    }
+
+    // Voltar: anotação, desfazer, mês, retrospectiva e folha, do mais recente ao mais antigo.
+    var annoBack by remember { mutableFloatStateOf(0f) }
+    BackHandler(enabled = pager.currentPage == 1 && month == null && retro == null && !sheetOpen && selected == null) { scope.launch { pager.animateScrollToPage(0) } }
+    BackHandler(enabled = snackbar.currentSnackbarData != null) { snackbar.currentSnackbarData?.dismiss() }
+    PredictiveBackHandler(enabled = selected != null) { progress ->
+        try { progress.collect { annoBack = it.progress }; selected = null } finally { annoBack = 0f }
+    }
+    var monthBack by remember { mutableFloatStateOf(0f) }
+    PredictiveBackHandler(enabled = month != null) { progress ->
+        try { progress.collect { monthBack = it.progress }; month = null } finally { monthBack = 0f }
+    }
+    var retroBack by remember { mutableFloatStateOf(0f) }
+    PredictiveBackHandler(enabled = retro != null) { progress ->
+        try { progress.collect { retroBack = it.progress }; closeRetro() } finally { retroBack = 0f }
+    }
+    BackHandler(enabled = sheetOpen) { sheetOpen = false }
+
+    val goHistory: () -> Unit = {
+        tick()
+        scope.launch { pager.animateScrollToPage(1, animationSpec = if (reduce) tween(0) else spring(0.9f, 300f)) }
+        scope.launch { histScroll.animateScrollTo(0) }
+    }
+
+    Box(Modifier.fillMaxSize().background(pal.bg)) {
+        Column(
+            Modifier.fillMaxSize().statusBarsPadding().graphicsLayer {
+                // A folha aberta faz a página recuar um pouco e escurecer.
+                val p = sheet.value
+                val s = 1f - 0.05f * p; scaleX = s; scaleY = s
+                transformOrigin = TransformOrigin(0.5f, 0f)
+            },
+        ) {
+            Tabs(
+                page = pager.targetPage, sheetOpen = sheetOpen,
+                onTab = { i -> if (i != pager.currentPage) { tick(); scope.launch { pager.animateScrollToPage(i, animationSpec = if (reduce) tween(0) else spring(0.9f, 300f)) } } },
+                onGear = { tick(); sheetOpen = !sheetOpen },
+            )
+            Box(Modifier.fillMaxSize()) {
+                HorizontalPager(pager, Modifier.fillMaxSize(), beyondViewportPageCount = 1) { p ->
+                    if (u == null) return@HorizontalPager
+                    if (p == 0) HojePage(
+                        u, ripple, hojeScroll,
+                        onDone = { change(u.today, if (u.todayMark == Mark.DONE) null else Mark.DONE) },
+                        onSkip = { change(u.today, if (u.todayMark == Mark.MISSED) null else Mark.MISSED) },
+                        onDay = { d -> change(d, Cal.next(u.markOf(d))) },
+                        onHistory = goHistory,
+                    ) else HistoriaPage(
+                        u, histScroll, period, onPeriod = { tick(); period = it },
+                        map = {
+                            YearPanel(u, selected, annoBack, ripple, period, onRect = { yearRect = it }, onShare = { share("ano") },
+                                onMonthLabel = { selected = null; tick(); monthFrom = yearRect; month = it },
+                                onDay = { d -> if (d == selected) change(d, Cal.next(u.markOf(d))) else { selected = d; tick() } })
+                        },
+                        onMonth = { m, r -> tick(); monthFrom = r; month = m },
+                        onRetro = { m, r -> tick(); retroFrom = r; retro = m },
+                    )
+                }
+                if (u != null) CompactBar(u, visible = pager.currentPage == 1, histScroll)
+            }
+        }
+
+        // Escurecimento da folha.
+        if (sheet.value > 0f) Box(
+            Modifier.fillMaxSize().graphicsLayer { alpha = 0.32f * sheet.value * (1f - sheetDrag) }.background(Color.Black)
+                .clickable(remember { MutableInteractionSource() }, null) { sheetOpen = false },
+        )
+
+        val m = shownMonth
+        if (m != null && u != null) ClipOverlay(monthFrom, monthReveal.value) {
+            MonthScreen(
+                u, m, monthBack, closing = month == null, onMonth = { month = it }, onClose = { month = null },
+                onDay = { d -> change(d, Cal.next(u.markOf(d))) }, onRetro = { tick(); retroFrom = Rect.Zero; retro = it },
+            )
+        }
+        val r = shownRetro
+        if (r != null && u != null) ClipOverlay(retroFrom, retroReveal.value) {
+            RetroScreen(u, r, retroBack, onClose = { tick(); closeRetro() }, onShare = { share("mes") })
+        }
+
+        if (sheet.value > 0f && u != null) SettingsHost(
+            progress = sheet.value, drag = sheetDrag, onDrag = { sheetDrag = it }, onRelease = { fast -> if (sheetDrag > 0.28f || fast) sheetOpen = false else sheetDrag = 0f },
+            onClose = { tick(); sheetOpen = false },
+        ) {
+            SettingsContent(
+                u.state, unrestricted, lastBackup,
+                SettingsActions(
+                    onName = vm::setName, onGoal = vm::setGoal, onRest = vm::setRest,
+                    onReminders = { list ->
+                        if (list.size > u.state.reminders.size && Build.VERSION.SDK_INT >= 33 &&
+                            ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                        ) notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        vm.setReminders(list)
+                    },
+                    onPalette = vm::setPalette, onTheme = vm::setTheme, onMonday = vm::setMondayFirst,
+                    onHaptics = vm::setHaptics, onCelebrate = vm::setCelebrate, onHour = vm::setHour,
+                    onExport = { exporter.launch("habito-backup-${LocalDate.now()}.json") },
+                    onImport = { importer.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) },
+                    onBattery = { ctx.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", ctx.packageName, null))) },
+                    onSeal = { day, text -> vm.sealLetter(day, text) },
+                    onUnseal = { vm.sealLetter(u.state.sealed?.forDay ?: 30, "") },
+                    onBackupFreq = { f ->
+                        if (f > 0 && u.state.backupUri.isEmpty()) { pendingFreq = f; folderPicker.launch(null) } else vm.setBackup(f)
+                    },
+                    onBackupFolder = { pendingFreq = maxOf(u.state.backupFreq, 1); folderPicker.launch(null) },
+                    onBackupNow = { backupNow() },
+                    onAddTile = if (Build.VERSION.SDK_INT >= 33) ({ HabitTileService.requestAdd(ctx) { added -> if (added) toast("Bloco adicionado") } }) else null,
+                    onAddWidget = { small ->
+                        val mgr = android.appwidget.AppWidgetManager.getInstance(ctx)
+                        if (mgr.isRequestPinAppWidgetSupported) mgr.requestPinAppWidget(android.content.ComponentName(ctx, if (small) HabitWidgetSmallReceiver::class.java else HabitWidgetReceiver::class.java), null, null)
+                        else toast("Este launcher não aceita adicionar por aqui: use a lista de widgets")
+                    },
+                    tick = ::tick,
+                ),
+            )
+        }
+
+        // Uma vez, no Hoje: a história está só neste celular há tempo demais.
+        if (u != null && pager.currentPage == 0 && !sheetOpen && month == null && retro == null) {
+            val s = u.state
+            val show = AutoBackup.stale(s) && s.done.size >= 30 && System.currentTimeMillis() - s.backupNudge > 30L * 24 * 60 * 60 * 1000
+            if (show) BackupNudge(
+                AutoBackup.daysWithout(s), Modifier.align(Alignment.BottomCenter),
+                onSave = { tick(); vm.dismissBackupNudge(); if (s.backupUri.isNotEmpty()) backupNow() else sheetOpen = true },
+                onDismiss = { tick(); vm.dismissBackupNudge() },
+            )
+        }
+
+        // Dia 1: a pergunta. Marco com frase lacrada: a frase abre.
+        if (u != null) androidx.compose.animation.AnimatedVisibility(u.empty && !u.state.letterAsked, enter = androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.fadeOut()) {
+            LetterAsk(onSeal = { tick(); vm.sealLetter(30, it) }, onSkip = { tick(); vm.skipLetter() })
+        }
+        val letter = opening
+        androidx.compose.animation.AnimatedVisibility(letter != null, enter = androidx.compose.animation.fadeIn(tween(350)), exit = androidx.compose.animation.fadeOut(tween(250))) {
+            val l = letter ?: return@AnimatedVisibility
+            LetterReveal(l, u?.today ?: LocalDate.now()) { next -> tick(); vm.closeLetter(l, next); opening = null }
+        }
+
+        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(Space.l)) { data ->
+            UndoBar(data.visuals.message, data.visuals.actionLabel) { data.performAction() }
+        }
+    }
+}
+
+/** "40 dias sem cópia · Guardar", calmo, no pé do Hoje. Aparece uma vez por mês no máximo. */
+@Composable
+private fun BackupNudge(days: Int, modifier: Modifier, onSave: () -> Unit, onDismiss: () -> Unit) {
+    val pal = Tokens
+    Row(
+        modifier.navigationBarsPadding().padding(Space.l).fillMaxWidth().clip(RoundedCornerShape(Radius.control)).background(pal.surface)
+            .border(1.dp, pal.rule, RoundedCornerShape(Radius.control)).padding(start = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Canvas(Modifier.size(7.dp)) { drawCircle(pal.gold) }
+        Spacer(Modifier.width(10.dp))
+        Text("$days dias sem cópia", style = Type.body, color = pal.text2, modifier = Modifier.weight(1f))
+        Text("Guardar", style = Type.body, color = pal.ink, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable(onClick = onSave).padding(horizontal = 12.dp, vertical = 14.dp))
+        Box(Modifier.size(44.dp).clickable(onClick = onDismiss), contentAlignment = Alignment.Center) {
+            Icon(painterResource(R.drawable.ic_x), "Dispensar", Modifier.size(14.dp), tint = pal.text3)
+        }
+    }
+}
+
+/** Abre ou fecha uma sobreposição recortada: devolve o que fica montado (o alvo, ou nada depois de fechar). */
+private suspend fun <T> reveal(target: T?, shown: T?, anim: Animatable<Float, *>, reduce: Boolean, set: (T?) -> Unit): T? {
+    if (target != null) {
+        val opening = shown == null
+        set(target)
+        if (opening) {
+            anim.snapTo(0f)
+            withFrameNanos { } // começa depois do primeiro quadro já montado
+            if (reduce) anim.snapTo(1f) else anim.animateTo(1f, tween(460, easing = OPEN))
+        }
+        return target
+    }
+    if (shown != null) { if (reduce) anim.snapTo(0f) else anim.animateTo(0f, tween(380, easing = CLOSE)) }
+    return null
+}
+
+/** O retângulo de origem cresce até a tela: mesma cor e mesmos cantos do bloco no início, o fundo no fim. */
+@Composable
+private fun ClipOverlay(from: Rect, t: Float, content: @Composable () -> Unit) {
+    val pal = Tokens
+    Box(
+        Modifier.fillMaxSize().drawWithContent {
+            val o = if (from == Rect.Zero) Rect(size.width * 0.1f, size.height * 0.45f, size.width * 0.9f, size.height * 0.55f) else from
+            val r = Rect(lerp(o.left, 0f, t), lerp(o.top, 0f, t), lerp(o.right, size.width, t), lerp(o.bottom, size.height, t))
+            val path = Path().apply { addRoundRect(RoundRect(r, CornerRadius(lerp(Radius.panel.toPx(), 0f, t)))) }
+            clipPath(path) {
+                drawRect(lerp(pal.surface, pal.bg, (t * 1.6f).coerceAtMost(1f)))
+                this@drawWithContent.drawContent()
+            }
+        },
+    ) { content() }
+}
+
+private fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
+
+/**
+ * Abas em caixa alta larga. A régua de tinta estica até a aba escolhida como o marcador do trilho: a borda da
+ * frente corre, a de trás alcança. A engrenagem gira um pouco com a folha aberta.
+ */
+@Composable
+private fun Tabs(page: Int, sheetOpen: Boolean, onTab: (Int) -> Unit, onGear: () -> Unit) {
+    val pal = Tokens
+    val reduce = LocalReduceMotion.current
+    val bounds = remember { arrayOf(0f to 0f, 0f to 0f) }
+    var ready by remember { mutableStateOf(false) }
+    val left = remember { Animatable(0f) }
+    val right = remember { Animatable(0f) }
+    LaunchedEffect(page, ready) {
+        if (!ready) return@LaunchedEffect
+        val (l, r) = bounds[page]
+        if (left.value == 0f && right.value == 0f || reduce) { left.snapTo(l); right.snapTo(r); return@LaunchedEffect }
+        val toRight = l > left.value
+        launch { left.animateTo(l, if (toRight) Motion.trail else Motion.lead) }
+        launch { right.animateTo(r, if (toRight) Motion.lead else Motion.trail) }
+    }
+    val gutter = with(LocalDensity.current) { Space.gutter.toPx() }
+    val gear by animateFloatAsState(if (sheetOpen) 60f else 0f, if (reduce) tween(0) else spring(0.7f, 300f), label = "gear")
+    Column {
+        Box(Modifier.fillMaxWidth().height(46.dp)) {
+            Row(Modifier.fillMaxSize().padding(start = Space.gutter, end = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                listOf("Hoje", "História").forEachIndexed { i, label ->
+                    val color by animateColorAsState(if (i == page) pal.ink else pal.text3, motion(250), label = "tab")
+                    Box(
+                        Modifier.fillMaxHeight()
+                            .onGloballyPositioned { c -> val x = c.positionInParent().x + gutter; bounds[i] = x to x + c.size.width; if (i == 1) ready = true }
+                            .semantics { role = Role.Tab; selected = i == page }
+                            .clickable(remember { MutableInteractionSource() }, null) { onTab(i) },
+                        contentAlignment = Alignment.Center,
+                    ) { Text(label.uppercase(), style = Type.caps, color = color) }
+                    Spacer(Modifier.width(24.dp))
+                }
+                Spacer(Modifier.weight(1f))
+                Box(
+                    Modifier.size(46.dp).clip(RoundedCornerShape(Radius.control)).clickable(onClick = onGear),
+                    contentAlignment = Alignment.Center,
+                ) { Icon(painterResource(R.drawable.ic_gear), "Ajustes", Modifier.size(20.dp).graphicsLayer { rotationZ = gear }, tint = pal.ink) }
+            }
+            // Régua: lida só no desenho, sem recompor a cada quadro.
+            Box(
+                Modifier.fillMaxWidth().height(2.dp).align(Alignment.BottomStart).drawBehind {
+                    if (right.value > left.value) drawRect(pal.ink, Offset(left.value, 0f), Size(right.value - left.value, size.height))
+                },
+            )
+        }
+        Hairline()
+    }
+}
+
+/** Ao rolar a História, a tarefa e a sequência ficam fixas no topo. */
+@Composable
+private fun CompactBar(u: HabitUi, visible: Boolean, scroll: ScrollState) {
+    val pal = Tokens
+    val density = LocalDensity.current
+    val start = with(density) { 90.dp.toPx() }
+    val span = with(density) { 40.dp.toPx() }
+    val progress by remember(visible) { derivedStateOf { if (!visible) 0f else ((scroll.value - start) / span).coerceIn(0f, 1f) } }
+    if (progress == 0f) return
+    Column(Modifier.fillMaxWidth().graphicsLayer { alpha = progress; translationY = (1f - progress) * -8.dp.toPx() }.background(pal.bg)) {
+        Row(Modifier.height(48.dp).padding(horizontal = Space.gutter), verticalAlignment = Alignment.CenterVertically) {
+            Text(u.state.taskName, color = pal.ink, style = Type.bodyL, maxLines = 1, modifier = Modifier.weight(1f))
+            RollingNumber("${u.streak}", pal.ink, Type.compactNum)
+            Spacer(Modifier.width(6.dp))
+            Text(if (u.weekly) (if (u.streak == 1) "semana" else "semanas") else (if (u.streak == 1) "dia" else "dias"), color = pal.text2, style = Type.body)
+        }
+        Hairline()
+    }
+}
+
+/** O bloco do mapa na História: título, total no período, compartilhar, o ano e a legenda. */
+@Composable
+private fun YearPanel(
+    u: HabitUi, selected: LocalDate?, back: Float, ripple: Int, period: Int,
+    onRect: (Rect) -> Unit, onShare: () -> Unit, onMonthLabel: (YearMonth) -> Unit, onDay: (LocalDate) -> Unit,
+) {
+    val pal = Tokens
+    val total = remember(u, period) { doneIn(u, period) }
+    Panel(Modifier.onGloballyPositioned { onRect(it.boundsInRoot()) }, padding = PaddingValues(start = 12.dp, top = 16.dp, end = 0.dp, bottom = 14.dp)) {
+        Row(Modifier.fillMaxWidth().padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Caps("Mapa", modifier = Modifier.weight(1f))
+            RollingLabel(if (total == 1) "1 feito" else "$total feitos", Type.caption, pal.text3)
+            if (!u.empty) Box(
+                Modifier.padding(start = 4.dp)
+                    .layout { m, c -> val p = m.measure(c); val h = 14.dp.roundToPx(); layout(p.width, h) { p.place(0, (h - p.height) / 2) } }
+                    .size(36.dp).clip(RoundedCornerShape(Radius.control)).clickable(onClick = onShare),
+                contentAlignment = Alignment.Center,
+            ) { Icon(painterResource(R.drawable.ic_share), "Compartilhar o ano", Modifier.size(16.dp), tint = pal.text2) }
+        }
+        Spacer(Modifier.height(6.dp))
+        Box {
+            Box(Modifier.graphicsLayer { alpha = if (u.empty) Alpha.dim else 1f }) {
+                YearHeatmap(u, selected, back, celebrate = ripple, period = period, onMonth = onMonthLabel, onTap = onDay)
+            }
+            if (u.empty) Invite(Modifier.matchParentSize())
+        }
+        Spacer(Modifier.height(Space.m))
+        Box(Modifier.padding(end = 14.dp)) { Legend(hint = selected != null) }
+    }
+}
+
+/**
+ * A folha dos Ajustes: sobe de baixo com mola, alça para arrastar e fechar, título grande e o conteúdo rolando.
+ * [drag] é a fração arrastada para baixo (0..1).
+ */
+@Composable
+private fun SettingsHost(
+    progress: Float, drag: Float, onDrag: (Float) -> Unit, onRelease: (Boolean) -> Unit, onClose: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    val pal = Tokens
+    var height by remember { mutableFloatStateOf(1f) }
+    var velocity by remember { mutableFloatStateOf(0f) }
+    val state = rememberDraggableState { d -> onDrag(((drag * height) + d).coerceAtLeast(0f) / height) }
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.9f)
+                .onGloballyPositioned { height = it.size.height.toFloat().coerceAtLeast(1f) }
+                .layout { m, c ->
+                    val p = m.measure(c)
+                    layout(p.width, p.height) { p.place(0, ((1f - progress) * p.height * 1.05f + drag * p.height).roundToInt()) }
+                }
+                .clip(RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp))
+                .background(pal.bg)
+                .clickable(remember { MutableInteractionSource() }, null) { },
+        ) {
+            Box(
+                Modifier.fillMaxWidth().height(30.dp).draggable(
+                    state, Orientation.Vertical,
+                    onDragStopped = { v -> velocity = v; onRelease(v > 1800f) },
+                ),
+                contentAlignment = Alignment.Center,
+            ) { Box(Modifier.size(width = 40.dp, height = 4.dp).clip(RoundedCornerShape(2.dp)).background(pal.line.copy(alpha = 0.55f))) }
+            Row(Modifier.fillMaxWidth().padding(horizontal = Space.gutter).padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Ajustes", style = Type.monthTitle.copy(fontSize = androidx.compose.ui.unit.TextUnit(40f, androidx.compose.ui.unit.TextUnitType.Sp), lineHeight = androidx.compose.ui.unit.TextUnit(40f, androidx.compose.ui.unit.TextUnitType.Sp)), color = pal.ink, modifier = Modifier.weight(1f))
+                Box(Modifier.size(40.dp).clip(RoundedCornerShape(Radius.control)).background(pal.surface).clickable(onClick = onClose), contentAlignment = Alignment.Center) {
+                    Icon(painterResource(R.drawable.ic_x), "Fechar ajustes", Modifier.size(18.dp), tint = pal.ink)
+                }
+            }
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(horizontal = Space.gutter).padding(bottom = 24.dp)) {
+                content()
+            }
+        }
+    }
+}
