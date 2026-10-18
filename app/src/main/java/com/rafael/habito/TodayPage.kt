@@ -22,6 +22,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -185,8 +186,17 @@ internal fun Top(u: HabitUi) {
 
 /** A sequência atual, o único número enorme. Ao rolar, encolhe para o canto e cede lugar à barra compacta. */
 @Composable
-internal fun Hero(u: HabitUi, scroll: ScrollState, compact: Boolean = false) {
+internal fun Hero(u: HabitUi, scroll: ScrollState, compact: Boolean = false, time: androidx.compose.runtime.State<Long>? = null) {
     val pal = Tokens
+    // O número enche até o próximo marco (na meta semanal, até a meta da semana), no material da cor.
+    // No dia do marco o número fica cheio; no dia seguinte começa a encher para o próximo.
+    val fill = if (isMilestone(u.streak, u.weekly) && u.todayMark == Mark.DONE) 1f else if (u.weekly) u.doneThisWeek.toFloat() / u.goal.coerceAtLeast(1) else {
+        val next = MILESTONE_STEPS.firstOrNull { it > u.streak } ?: ((u.streak / 365 + 1) * 365)
+        val prev = MILESTONE_STEPS.lastOrNull { it <= u.streak && it < next } ?: 0
+        (u.streak - prev).toFloat() / (next - prev)
+    }
+    val level by animateFloatAsState(fill.coerceIn(0f, 1f), if (LocalReduceMotion.current) snap() else tween(1400, easing = FastOutSlowInEasing), label = "fill")
+    val petals = remember(pal.glyph) { PetalState() }
     val density = LocalDensity.current
     val span = with(density) { 160.dp.toPx() }
     val reduce = LocalReduceMotion.current
@@ -203,7 +213,9 @@ internal fun Hero(u: HabitUi, scroll: ScrollState, compact: Boolean = false) {
         ) {
             val d = LocalDensity.current
             androidx.compose.runtime.CompositionLocalProvider(LocalDensity provides androidx.compose.ui.unit.Density(d.density, d.fontScale.coerceAtMost(1.15f))) {
-                RollingNumber("${u.streak}", pal.ink, if (compact) Type.hero.copy(fontSize = 128.sp, lineHeight = 118.sp, letterSpacing = (-5.5).sp) else Type.hero)
+                Box(if (time != null) Modifier.materialFill(pal, { level }, { time.value }, petals) else Modifier) {
+                RollingNumber("${u.streak}", if (time != null) vessel(pal) else pal.ink, if (compact) Type.hero.copy(fontSize = 128.sp, lineHeight = 118.sp, letterSpacing = (-5.5).sp) else Type.hero)
+                }
             }
         }
         Text(
@@ -539,7 +551,16 @@ internal fun Invite(modifier: Modifier) {
 internal fun HojePage(
     u: HabitUi, ripple: Int, scroll: ScrollState,
     onDone: () -> Unit, onSkip: () -> Unit, onDay: (LocalDate) -> Unit, onHistory: () -> Unit,
+    onGrid: (androidx.compose.ui.geometry.Rect) -> Unit = {},
 ) {
+    val time = rememberFrameTime()
+    val pal = Tokens
+    val dark = pal.bg.red < 0.5f
+    Box(Modifier.fillMaxSize()) {
+    // O campo vivo: atrás do número, some ao rolar.
+    androidx.compose.foundation.Canvas(
+        Modifier.fillMaxWidth().height(460.dp).graphicsLayer { alpha = (1f - scroll.value / 500f).coerceIn(0f, 1f); translationY = -scroll.value * 0.4f },
+    ) { livingField(pal, time.value, dark) }
     Column(
         Modifier
             .fillMaxSize()
@@ -551,7 +572,7 @@ internal fun HojePage(
         Column(Modifier.entrance(0)) {
             Rule(index = 0)
             Top(u)
-            Hero(u, scroll, compact = true)
+            Hero(u, scroll, compact = true, time = time)
             Gauge(u)
         }
         Column(Modifier.padding(top = 28.dp).entrance(1)) {
@@ -560,14 +581,15 @@ internal fun HojePage(
         }
         Column(Modifier.padding(top = 28.dp).entrance(2)) {
             Rule(index = 2)
-            MiniYear(u, onHistory)
+            MiniYear(u, onHistory, onGrid)
         }
+    }
     }
 }
 
 /** As últimas 20 semanas, sem rótulos. Tocar leva à História, no mapa do ano. */
 @Composable
-internal fun MiniYear(u: HabitUi, onClick: () -> Unit) {
+internal fun MiniYear(u: HabitUi, onClick: () -> Unit, onGrid: (androidx.compose.ui.geometry.Rect) -> Unit = {}) {
     val pal = Tokens
     val weeks = 20
     val press = remember { MutableInteractionSource() }
@@ -583,7 +605,7 @@ internal fun MiniYear(u: HabitUi, onClick: () -> Unit) {
         }
         Spacer(Modifier.height(12.dp))
         val first = u.today.minusDays(((weeks - 1) * 7 + Cal.rowOf(u.today)).toLong())
-        Canvas(Modifier.fillMaxWidth().aspectRatio(weeks / 7f)) {
+        Canvas(Modifier.fillMaxWidth().aspectRatio(weeks / 7f).onGloballyPositioned { onGrid(it.boundsInRoot()) }) {
             val gap = 3.dp.toPx()
             val cell = (size.width - gap * (weeks - 1)) / weeks
             val r = CornerRadius(Radius.cell.toPx())

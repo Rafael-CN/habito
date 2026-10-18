@@ -279,7 +279,7 @@ internal fun SettingsContent(s: HabitState, unrestricted: Boolean, lastBackup: L
             }
         }
         Text(
-            "Hábito 4.3 · fonte Archivo (OFL) · seus dados ficam só neste aparelho",
+            "Hábito 4.4 · fonte Archivo (OFL) · seus dados ficam só neste aparelho",
             style = Type.caption, color = pal.text3, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             modifier = Modifier.fillMaxWidth().padding(top = 22.dp, bottom = 8.dp),
         )
@@ -626,12 +626,28 @@ private fun Swatches(selected: String, onSelect: (String) -> Unit) {
     }
 }
 
-/** As últimas 26 semanas na cor escolhida, para ver a troca acontecer. */
+/**
+ * As últimas 26 semanas na cor escolhida. Trocar de cor pinga a tinta acima da amostra tocada e ela se espalha
+ * pelo mapa: cada quadrado muda quando a onda passa, com um pulinho.
+ */
 @Composable
 private fun PalettePreview(s: HabitState) {
     val pal = Tokens
     val today = s.today
     val levels = remember(s) { Cal.levels(s, today.minusDays(26 * 7L), today) }
+    val dark = pal.bg.red < 0.5f
+    val shown = remember { mutableStateOf(s.palette) }
+    val from = remember { mutableStateOf(s.palette) }
+    val ink = remember { androidx.compose.animation.core.Animatable(1f) }
+    val reduce = LocalReduceMotion.current
+    androidx.compose.runtime.LaunchedEffect(s.palette) {
+        if (shown.value == s.palette) return@LaunchedEffect
+        from.value = shown.value; shown.value = s.palette
+        if (reduce) ink.snapTo(1f) else { ink.snapTo(0f); ink.animateTo(1f, tween(1100, easing = androidx.compose.animation.core.LinearEasing)) }
+    }
+    val oldLv = remember(from.value, dark, s.paper) { paletteFor(from.value, dark, s.paper).levels }
+    val newLv = remember(s.palette, dark, s.paper) { paletteFor(s.palette, dark, s.paper).levels }
+    val originX = (Accents.NAMES.indexOf(s.palette).coerceAtLeast(0) + 0.5f) / Accents.NAMES.size
     Box(Modifier.fillMaxWidth().padding(top = 12.dp).clip(RoundedCornerShape(Radius.panel)).background(pal.surface).padding(10.dp)) {
         Canvas(Modifier.fillMaxWidth().aspectRatio(26f / 7f)) {
             val weeks = 26; val gap = 2.dp.toPx()
@@ -640,7 +656,16 @@ private fun PalettePreview(s: HabitState) {
             for (col in 0 until weeks) for (row in 0 until 7) {
                 val d = first.plusDays((col * 7 + row).toLong())
                 if (d.isAfter(today)) continue
-                drawRoundRect(pal.levels[levels[d] ?: 0], Offset(col * (cell + gap), row * (cell + gap)), Size(cell, cell), CornerRadius(1.dp.toPx()))
+                val lv = levels[d] ?: 0
+                val tl = Offset(col * (cell + gap), row * (cell + gap))
+                // A onda sai de cima da amostra tocada; a frente passa por cada quadrado e ele troca de cor.
+                val dist = kotlin.math.hypot(tl.x + cell / 2 - originX * size.width, tl.y + cell / 2 + 24.dp.toPx())
+                val front = ink.value * (size.width * 1.25f) - dist
+                val k = (front / (14.dp.toPx())).coerceIn(0f, 1f)
+                val bump = kotlin.math.sin(k * Math.PI).toFloat() * 0.35f
+                val col2 = if (lv == 0) pal.levels[0] else if (k >= 0.5f) newLv[lv] else oldLv[lv]
+                val g = cell * bump / 2
+                drawRoundRect(col2, tl - Offset(g, g), Size(cell + 2 * g, cell + 2 * g), CornerRadius(1.dp.toPx() * (1 + bump * 2)))
             }
         }
     }

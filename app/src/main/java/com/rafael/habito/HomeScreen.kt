@@ -134,7 +134,9 @@ fun HomeScreen(vm: HabitViewModel) {
     val pal = Tokens
     val reduce = LocalReduceMotion.current
     var selected by rememberSaveable { mutableStateOf<LocalDate?>(null) }
-    var ripple by remember { mutableIntStateOf(0) } // a semana e o ano acendem quando um marco é alcançado
+    var ripple by remember { mutableIntStateOf(0) }
+    var gridRect by remember { mutableStateOf(androidx.compose.ui.geometry.Rect.Zero) } // o mini ano do Hoje, para o marco sair dele
+    var glyphMarco by remember { mutableStateOf<Int?>(null) } // a semana e o ano acendem quando um marco é alcançado
     var period by rememberSaveable { mutableIntStateOf(0) } // 0 = 12 meses, ou um ano
     val snackbar = remember { SnackbarHostState() }
     var snackJob by remember { mutableStateOf<Job?>(null) }
@@ -169,6 +171,8 @@ fun HomeScreen(vm: HabitViewModel) {
         if (cur != null && cur.state.celebrate && streak != null && before != null && streak > before && isMilestone(streak, cur.weekly) && cur.todayMark == Mark.DONE) {
             ripple++
             if (cur.state.haptics) Haptics.milestone(ctx)
+            // O ano vira o glifo: depois do quadrado de hoje se encher.
+            if (!reduce && pager.currentPage == 0) glyphMarco = streak // o glifo espera o quadrado de hoje se encher
         }
     }
 
@@ -209,7 +213,8 @@ fun HomeScreen(vm: HabitViewModel) {
     // Frase do dia 1: aberta quando a sequência chega ao dia dela.
     var opening by remember { mutableStateOf<Letter?>(null) }
     val toOpen = u?.state?.letterToOpen
-    LaunchedEffect(toOpen) { if (toOpen != null && opening == null) { delay(if (reduce) 0 else 1100); opening = toOpen } }
+    // A carta do marco abre depois do glifo.
+    LaunchedEffect(toOpen, glyphMarco) { if (toOpen != null && opening == null && glyphMarco == null) { delay(if (reduce) 0 else 900); if (glyphMarco == null) opening = toOpen } }
 
     val notifPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (!granted) toast("Sem permissão de notificação, o lembrete não aparece")
@@ -311,6 +316,7 @@ fun HomeScreen(vm: HabitViewModel) {
                         onSkip = { change(u.today, if (u.todayMark == Mark.MISSED) null else Mark.MISSED) },
                         onDay = { d -> change(d, Cal.next(u.markOf(d))) },
                         onHistory = goHistory,
+                        onGrid = { gridRect = it },
                     ) else HistoriaPage(
                         u, histScroll, period, onPeriod = { tick(); period = it },
                         map = {
@@ -409,6 +415,9 @@ fun HomeScreen(vm: HabitViewModel) {
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(Space.l)) { data ->
             UndoBar(data.visuals.message, data.visuals.actionLabel) { data.performAction() }
         }
+
+        // Marco: o ano se solta do mapa e forma o glifo da cor (acima de tudo, até do aviso de desfazer).
+        glyphMarco?.let { m -> if (u != null) YearGlyph(u, gridRect, m) { glyphMarco = null } }
     }
 }
 
