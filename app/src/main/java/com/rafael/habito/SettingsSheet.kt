@@ -201,8 +201,9 @@ internal fun SettingsContent(s: HabitState, unrestricted: Boolean, lastBackup: L
         Group("Aparência")
         Row(Modifier.fillMaxWidth().padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Cor do mapa", style = Type.bodyL, color = pal.ink, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-            Swatches(s.palette) { a.tick(); a.onPalette(it) }
+            Text(Accents.label(s.palette), style = Type.body, color = pal.text2)
         }
+        Swatches(s.palette) { a.tick(); a.onPalette(it) }
         PalettePreview(s)
         Labeled("Tema") { Track(listOf("Sistema", "Claro", "Escuro"), s.themeMode, { a.tick(); a.onTheme(it) }, Modifier.width(210.dp)) }
         Labeled("A semana começa") { Track(listOf("Domingo", "Segunda"), if (s.mondayFirst) 1 else 0, { a.tick(); a.onMonday(it == 1) }, Modifier.width(210.dp)) }
@@ -275,7 +276,7 @@ internal fun SettingsContent(s: HabitState, unrestricted: Boolean, lastBackup: L
             }
         }
         Text(
-            "Hábito 4.0 · fonte Archivo (OFL) · seus dados ficam só neste aparelho",
+            "Hábito 4.1 · fonte Archivo (OFL) · seus dados ficam só neste aparelho",
             style = Type.caption, color = pal.text3, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             modifier = Modifier.fillMaxWidth().padding(top = 22.dp, bottom = 8.dp),
         )
@@ -592,12 +593,12 @@ private fun Labeled(label: String, control: @Composable () -> Unit) {
     }
 }
 
-/** Cinco amostras de cor; cada uma mostra três tons da própria escala. */
+/** Uma amostra por cor, na largura toda; cada uma mostra três tons da própria escala. */
 @Composable
 private fun Swatches(selected: String, onSelect: (String) -> Unit) {
     val pal = Tokens
     val dark = pal.bg.red < 0.5f
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Accents.NAMES.forEach { name ->
             val p = paletteFor(name, dark)
             val on = name == selected
@@ -606,7 +607,7 @@ private fun Swatches(selected: String, onSelect: (String) -> Unit) {
             val pressed by press.collectIsPressedAsState()
             val scale by animateFloatAsState(if (pressed && !LocalReduceMotion.current) 0.92f else 1f, Motion.press, label = "swS")
             Canvas(
-                Modifier.size(34.dp).scale(scale).clip(RoundedCornerShape(Radius.control)).background(pal.surface)
+                Modifier.weight(1f).aspectRatio(1f).scale(scale).clip(RoundedCornerShape(Radius.control)).background(pal.surface)
                     .border(2.dp, ring, RoundedCornerShape(Radius.control))
                     .semantics { role = Role.RadioButton; stateDescription = name }
                     .clickable(press, indication = null) { onSelect(name) },

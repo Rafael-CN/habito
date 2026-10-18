@@ -69,15 +69,24 @@ object Palettes {
  * (neutros, tinta, vermelho do "não fiz", dourado dos marcos) fica igual. Cada lista: tons 1..4, feito, texto sobre o feito.
  */
 object Accents {
-    val NAMES = listOf("verde", "azul", "ambar", "violeta", "grafite")
+    val NAMES = listOf("verde", "rosa", "azul", "oceano", "violeta", "ambar", "terracota", "grafite")
+
+    /** Nome para mostrar. */
+    fun label(name: String): String = when (name) { "ambar" -> "Âmbar"; else -> name.replaceFirstChar { it.uppercase() } }
     private fun c(vararg h: Long) = h.map { Color(it) }
     private val light = mapOf(
+        "rosa" to c(0xFFF9D3E0, 0xFFEE93B4, 0xFFD6517F, 0xFF9C2350, 0xFFB8336A, 0xFFFFFFFF),
+        "oceano" to c(0xFFC4EAE6, 0xFF6FCBC2, 0xFF1F9A90, 0xFF0B5E58, 0xFF0E7C74, 0xFFFFFFFF),
+        "terracota" to c(0xFFF7D7C6, 0xFFE99A73, 0xFFC8592C, 0xFF8A3212, 0xFFAA4419, 0xFFFFFFFF),
         "azul" to c(0xFFC5DDF8, 0xFF79AEEA, 0xFF2F76CF, 0xFF12468F, 0xFF1F67C2, 0xFFFFFFFF),
         "ambar" to c(0xFFF6E2B3, 0xFFE8B95A, 0xFFC98A12, 0xFF7E5200, 0xFF8F5D00, 0xFFFFFFFF),
         "violeta" to c(0xFFDDD3F5, 0xFFAE97E6, 0xFF7656CC, 0xFF4A2E95, 0xFF6242B8, 0xFFFFFFFF),
         "grafite" to c(0xFFD8D8D6, 0xFFA9A9A6, 0xFF6E6E6B, 0xFF2E2E2C, 0xFF2E2E2C, 0xFFFFFFFF),
     )
     private val dark = mapOf(
+        "rosa" to c(0xFF3D1526, 0xFF6E2445, 0xFFB23D6E, 0xFFF28AB3, 0xFFE46E9E, 0xFF1F0612),
+        "oceano" to c(0xFF0B302D, 0xFF135550, 0xFF1F8F86, 0xFF5ED6CB, 0xFF3DBDB2, 0xFF031413),
+        "terracota" to c(0xFF3B1A0E, 0xFF6C2F18, 0xFFCB653C, 0xFFF29A6E, 0xFFE07A4C, 0xFF1E0B03),
         "azul" to c(0xFF12305A, 0xFF1C4F92, 0xFF3A7FD6, 0xFF78B4FF, 0xFF4C93E8, 0xFF06121F),
         "ambar" to c(0xFF3D2C08, 0xFF6E4E0E, 0xFFB9841C, 0xFFF0BE4E, 0xFFE0A93A, 0xFF1C1300),
         "violeta" to c(0xFF2A1F4A, 0xFF47367F, 0xFF6A50C4, 0xFFB39CFF, 0xFF9C84F0, 0xFF120A26),
