@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Gerado por design/icones/gen_icons.js: o glifo do marco desta cor, sozinho. -->
+<!-- Gerado: o glifo do marco desta cor, sozinho. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
-    <group android:translateX="24" android:translateY="24" android:scaleX="3" android:scaleY="3"><path android:pathData="M10.00,10.00 L10.00,1.80 M7.11,4.07 L10.00,5.60 L12.89,4.07 M10.00,10.00 L17.10,5.90 M13.69,4.53 L13.81,7.80 L16.58,9.54 M10.00,10.00 L17.10,14.10 M16.58,10.46 L13.81,12.20 L13.69,15.47 M10.00,10.00 L10.00,18.20 M12.89,15.93 L10.00,14.40 L7.11,15.93 M10.00,10.00 L2.90,14.10 M6.31,15.47 L6.19,12.20 L3.42,10.46 M10.00,10.00 L2.90,5.90 M3.42,9.54 L6.19,7.80 L6.31,4.53" android:strokeColor="#FFFFFFFF" android:strokeWidth="2.2" android:strokeLineCap="round" android:strokeLineJoin="round" android:fillColor="#00000000"/></group>
+    <group android:translateX="32" android:translateY="32" android:scaleX="2.2" android:scaleY="2.2"><path android:pathData="M10.00,10.00 L10.00,1.80 M7.11,4.07 L10.00,5.60 L12.89,4.07 M10.00,10.00 L17.10,5.90 M13.69,4.53 L13.81,7.80 L16.58,9.54 M10.00,10.00 L17.10,14.10 M16.58,10.46 L13.81,12.20 L13.69,15.47 M10.00,10.00 L10.00,18.20 M12.89,15.93 L10.00,14.40 L7.11,15.93 M10.00,10.00 L2.90,14.10 M6.31,15.47 L6.19,12.20 L3.42,10.46 M10.00,10.00 L2.90,5.90 M3.42,9.54 L6.19,7.80 L6.31,4.53" android:strokeColor="#FFFFFFFF" android:strokeWidth="2.2" android:strokeLineCap="round" android:strokeLineJoin="round" android:fillColor="#00000000"/></group>
 </vector>

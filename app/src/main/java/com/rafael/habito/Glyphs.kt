@@ -24,7 +24,7 @@ import kotlin.math.sin
  * [symmetry] é o giro que devolve a mesma forma (0 = não gira).
  */
 enum class Glyph(val symmetry: Float) {
-    ASTERISCO(60f), FLOR(60f), CRISTAL(60f), ESTRELA_MAR(72f), BRILHO(90f), SOL(60f), CARIMBO(60f), LAPIS(0f)
+    ASTERISCO(60f), FLOR(60f), CRISTAL(60f), ESTRELA_MAR(72f), BRILHO(90f), SOL(60f), ESPIRAL(120f), LAPIS(0f)
 }
 
 /** O gesto do quadrado de hoje ao ser marcado. */
@@ -33,7 +33,7 @@ enum class Gesture { BROTO, FLOR, GOTA, ONDA, CINTILA, BRILHO, CARIMBO, TRACO }
 object Glyphs {
     fun of(palette: String): Glyph = when (palette) {
         "rosa" -> Glyph.FLOR; "azul" -> Glyph.CRISTAL; "oceano" -> Glyph.ESTRELA_MAR; "violeta" -> Glyph.BRILHO
-        "ambar" -> Glyph.SOL; "terracota" -> Glyph.CARIMBO; "grafite" -> Glyph.LAPIS; else -> Glyph.ASTERISCO
+        "ambar" -> Glyph.SOL; "terracota" -> Glyph.ESPIRAL; "grafite" -> Glyph.LAPIS; else -> Glyph.ASTERISCO
     }
 
     fun gesture(palette: String): Gesture = when (palette) {
@@ -96,10 +96,19 @@ object Glyphs {
         }
         Glyph.SOL -> Path().apply { addCircle(10f, 10f, 4.4f, Path.Direction.CW) }
             .plus(stroked(Path().apply { for (k in 0 until 6) seg(k * 60.0, 6.8, 9.3) }, 2.2f))
-        Glyph.CARIMBO -> {
-            val hex = polygon(6) { 9.0 }
-            Path(hex).plus(stroked(hex, 1.4f)).minus(stroked(Path().apply { listOf(0.0, 60.0, 120.0).forEach { seg(it, -5.0, 5.0) } }, 2.1f))
-        }
+        // Terracota: três espirais saindo do centro, como as marcas do torno no barro (simetria de 120°).
+        Glyph.ESPIRAL -> stroked(Path().apply {
+            for (k in 0 until 3) {
+                var th = 0.0; var first = true
+                while (th <= 1.75 * PI) {
+                    val r = 1.2 + th * 1.35
+                    val a = k * 2 * PI / 3 + th - PI / 2
+                    val x = (10 + cos(a) * r).toFloat(); val y = (10 + sin(a) * r).toFloat()
+                    if (first) { moveTo(x, y); first = false } else lineTo(x, y)
+                    th += 0.1
+                }
+            }
+        }, 2.3f)
         Glyph.LAPIS -> stroked(Path().apply {
             moveTo(10.2f, 1.6f); lineTo(9.8f, 18.3f)
             moveTo(2.9f, 5.6f); quadTo(10f, 10.4f, 17.3f, 14.2f)
@@ -112,14 +121,14 @@ object Glyphs {
  * O glifo do marco, de ponta a ponta [len], centrado em [center]. [turn] gira em graus.
  * O nome ficou "star" desde o asterisco da 3.3; hoje cada cor tem o seu.
  */
-fun DrawScope.star(color: Color, center: Offset, len: Float, turn: Float = 0f, glyph: Glyph = Glyph.ASTERISCO) {
+fun DrawScope.star(color: Color, center: Offset, len: Float, turn: Float = 0f, glyph: Glyph = Glyph.ASTERISCO, blendMode: androidx.compose.ui.graphics.BlendMode = androidx.compose.ui.graphics.BlendMode.SrcOver) {
     if (len <= 0f) return
     val p = Glyphs.composePath(glyph)
     withTransform({
         translate(center.x - len / 2, center.y - len / 2)
         scale(len / 20f, len / 20f, Offset.Zero)
         if (turn != 0f) rotate(turn, Offset(10f, 10f))
-    }) { drawPath(p, color) }
+    }) { drawPath(p, color, blendMode = blendMode) }
 }
 
 /** O mesmo glifo num Canvas comum (widget e cartões). */
