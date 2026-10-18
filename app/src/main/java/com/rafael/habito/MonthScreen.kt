@@ -211,13 +211,12 @@ fun MonthScreen(
 @Composable
 private fun Caption(u: HabitUi, d: LocalDate?) {
     val pal = Tokens
-    val text = if (d == null) buildAnnotatedString { append("Toque num dia para ler. Toque de novo para mudar.") }
+    val text = if (d == null) buildAnnotatedString { }
     else buildAnnotatedString {
         withStyle(SpanStyle(color = pal.ink, fontWeight = FontWeight.SemiBold)) { append(d.format(DAY_LONG).replaceFirstChar { it.uppercase() }) }
-        val mark = u.markOf(d)
-        append(" · "); append(when (mark) { Mark.DONE -> "feito"; Mark.MISSED -> "não fiz"; null -> "sem registro" })
-        if (mark == Mark.DONE) append(", ${u.state.streakEndingAt(d)}º dia da sequência")
-        append(".\nToque de novo para mudar.")
+        append(" · "); append(dayState(u, d))
+        if (u.markOf(d) == Mark.DONE) append(", ${u.state.streakEndingAt(d)}º dia da sequência")
+        u.milestones[d]?.let { append(" · marco de $it") }
     }
     Text(text, style = Type.body.copy(fontSize = 12.sp, lineHeight = 16.sp), color = pal.text2, modifier = Modifier.padding(top = Space.l).heightIn(min = 32.dp))
 }

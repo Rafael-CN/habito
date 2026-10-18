@@ -152,7 +152,13 @@ object ShareImage {
             c.drawRoundRect(RectF(x, y, x + size, y + small), rr, rr, Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color.toArgb() })
             num.color = (if (out) pal.text3 else pal.levelInk[u.level(d)]).toArgb()
             c.drawText("$day", x + 12f, y + 34f, num)
-            if (!out && u.markOf(d) == Mark.MISSED) c.drawCircle(x + size - 16f, y + small - 16f, 6f, Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = pal.miss.toArgb() })
+            when {
+                out -> Unit
+                d in u.state.scars -> c.drawRect(x - gap / 2, y + small / 2 - 2f, x + size + gap / 2, y + small / 2 + 2f, Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = pal.gold.toArgb() })
+                d in u.state.tropes -> c.drawTrope(x + size - 34f, y + small - 34f, 26f, pal.text3.toArgb())
+                u.markOf(d) == Mark.MISSED -> c.drawCircle(x + size - 16f, y + small - 16f, 6f, Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = pal.miss.toArgb() })
+            }
+            if (!out && d in u.milestones) c.drawStar(x + size - 22f, y + small - 22f, 26f, pal.levelInk[u.level(d)].toArgb())
         }
         figures(ctx, c, 1120f, listOf("${r.pct}%" to "do mês", "${r.longest}" to "maior sequência", r.deltaLabel to "vs. mês anterior"))
         footer(ctx, c)

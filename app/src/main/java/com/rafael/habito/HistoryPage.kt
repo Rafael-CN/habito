@@ -136,6 +136,13 @@ internal fun HistoriaPage(
             Returns(u, returns)
         }
 
+        val opened = remember(u) { u.state.letters.filter { it.opened != null }.sortedByDescending { it.opened } }
+        if (opened.isNotEmpty()) Column(Modifier.padding(top = Space.section).entrance(4)) {
+            Rule(index = 4)
+            SectionHead("Frases", if (opened.size == 1) "1 aberta" else "${opened.size} abertas")
+            opened.forEach { LetterRow(it) }
+        }
+
         Column(Modifier.padding(top = Space.section).entrance(4)) {
             Rule(index = 4)
             SectionHead("Números", "desde ${u.start.format(SINCE)}")
@@ -155,7 +162,7 @@ internal fun HistoriaPage(
         }
 
         Row(Modifier.fillMaxWidth().padding(top = 40.dp, bottom = 80.dp)) {
-            Text("Hábito 3.3", style = Type.caption, color = pal.text3, modifier = Modifier.weight(1f))
+            Text("Hábito 4.0", style = Type.caption, color = pal.text3, modifier = Modifier.weight(1f))
             Text("um hábito, um quadrado por dia", style = Type.caption, color = pal.text3)
         }
     }
@@ -206,6 +213,21 @@ private fun Returns(u: HabitUi, runs: List<Run>) {
             (if (picked > 0) " · depois de ${r.gapBefore} ${if (r.gapBefore == 1) "dia" else "dias"}" else "")
     }
     Text(text, style = Type.caption.copy(fontSize = androidx.compose.ui.unit.TextUnit(12f, androidx.compose.ui.unit.TextUnitType.Sp)), color = pal.text2, modifier = Modifier.padding(top = 10.dp).height(18.dp))
+}
+
+/** Uma frase aberta: o asterisco do marco, quando abriu e o texto. */
+@Composable
+private fun LetterRow(l: Letter) {
+    val pal = Tokens
+    Column(Modifier.fillMaxWidth().padding(vertical = 14.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Canvas(Modifier.size(12.dp)) { star(pal.levels[4], center, size.width) }
+            Spacer(Modifier.width(8.dp))
+            Text("dia ${l.forDay} · escrita em ${Cal.shortDate(l.written).substringAfter(", ")}", style = Type.caption, color = pal.text3)
+        }
+        Text("“${l.text}”", style = Type.title.copy(fontWeight = FontWeight.Medium), color = pal.ink, modifier = Modifier.padding(top = 6.dp))
+    }
+    Hairline()
 }
 
 /** Uma linha por mês: nome, quantos dias, uma barra fina do quanto foi feito e o minimapa do mês. */
@@ -261,8 +283,15 @@ private fun MiniMonth(u: HabitUi, m: YearMonth) {
                 drawRoundRect(pal.rule, tl, Size(c, c), r, style = Stroke(1.dp.toPx()))
                 continue
             }
-            drawRoundRect(pal.levels[u.level(d)], tl, Size(c, c), r)
-            if (u.markOf(d) == Mark.MISSED) drawCircle(pal.miss, c * 0.22f, tl + Offset(c / 2, c / 2))
+            when {
+                d in u.milestones -> starCell(pal, tl, c)
+                d in u.state.scars -> { drawRoundRect(pal.levels[0], tl, Size(c, c), r); stitch(pal, tl, c, c, g, vertical = false) }
+                else -> {
+                    drawRoundRect(pal.levels[u.level(d)], tl, Size(c, c), r)
+                    if (d in u.state.tropes) tropeMark(pal, tl, c)
+                    else if (u.markOf(d) == Mark.MISSED) drawCircle(pal.miss, c * 0.22f, tl + Offset(c / 2, c / 2))
+                }
+            }
         }
     }
 }

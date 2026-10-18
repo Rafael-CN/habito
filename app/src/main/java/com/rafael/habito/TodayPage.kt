@@ -199,7 +199,12 @@ internal fun Hero(u: HabitUi, scroll: ScrollState, compact: Boolean = false) {
                 alpha = 1f - 0.85f * t
                 transformOrigin = TransformOrigin(0f, 1f)
             },
-        ) { RollingNumber("${u.streak}", pal.ink, if (compact) Type.hero.copy(fontSize = 128.sp, lineHeight = 118.sp, letterSpacing = (-5.5).sp) else Type.hero) }
+        ) {
+            val d = LocalDensity.current
+            androidx.compose.runtime.CompositionLocalProvider(LocalDensity provides androidx.compose.ui.unit.Density(d.density, d.fontScale.coerceAtMost(1.15f))) {
+                RollingNumber("${u.streak}", pal.ink, if (compact) Type.hero.copy(fontSize = 128.sp, lineHeight = 118.sp, letterSpacing = (-5.5).sp) else Type.hero)
+            }
+        }
         Text(
             unitLabel(u, "\n"),
             style = Type.title.copy(fontWeight = FontWeight.Medium, lineHeight = 20.sp), color = pal.ink,

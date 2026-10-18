@@ -90,6 +90,23 @@ class MainActivity : ComponentActivity() {
         }
         intent?.getStringExtra("seed33")?.let { kind -> lifecycleScope.launch { HabitStore.seed33(applicationContext, kind); HabitWidget().updateAll(applicationContext) } }
         if (intent?.getBooleanExtra("show_retro", false) == true) RetroDebug.force = true
+        // `--ei render_widget <largura dp>`: a grade do widget, já pintada, em files/widget-<dp>.png (escuro).
+        intent?.getIntExtra("render_widget", 0)?.takeIf { it > 0 }?.let { w ->
+            lifecycleScope.launch {
+                val s = HabitStore.load(applicationContext)
+                val g = HeatmapRenderer.render(s, w.toFloat(), w * 0.38f, resources.displayMetrics.density)
+                val base = (g.levels.firstOrNull { it != null } ?: g.ring)!!
+                val out = android.graphics.Bitmap.createBitmap(base.width, base.height, android.graphics.Bitmap.Config.ARGB_8888)
+                val c = android.graphics.Canvas(out); c.drawColor(0xFF151517.toInt())
+                val p = android.graphics.Paint()
+                fun layer(b: android.graphics.Bitmap?, color: Int) { if (b != null) { p.colorFilter = android.graphics.PorterDuffColorFilter(color, android.graphics.PorterDuff.Mode.SRC_IN); c.drawBitmap(b, 0f, 0f, p) } }
+                val lv = intArrayOf(0xFF242428.toInt(), 0xFF0F3B20.toInt(), 0xFF166B35.toInt(), 0xFF25A050.toInt(), 0xFF4CD27C.toInt())
+                g.levels.forEachIndexed { i, b -> layer(b, lv[i]) }
+                layer(g.rest, 0xFF8C8C8C.toInt()); layer(g.trope, 0xFF8C8C8C.toInt()); layer(g.scar, 0xFFD9AB33.toInt())
+                layer(g.missed, 0xFFF06058.toInt()); layer(g.ring, 0xFFECECEC.toInt())
+                java.io.File(filesDir, "widget-$w.png").outputStream().use { out.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+            }
+        }
         if (intent?.getBooleanExtra("test_reminder", false) == true) {
             lifecycleScope.launch { Reminder.notify(applicationContext, HabitStore.load(applicationContext)) }
         }

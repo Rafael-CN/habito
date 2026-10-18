@@ -296,7 +296,10 @@ fun HomeScreen(vm: HabitViewModel) {
         ) {
             Tabs(
                 page = pager.targetPage, sheetOpen = sheetOpen,
-                onTab = { i -> if (i != pager.currentPage) { tick(); scope.launch { pager.animateScrollToPage(i, animationSpec = if (reduce) tween(0) else spring(0.9f, 300f)) } } },
+                onTab = { i ->
+                    if (i != pager.currentPage) { tick(); scope.launch { pager.animateScrollToPage(i, animationSpec = if (reduce) tween(0) else spring(0.9f, 300f)) } }
+                    else scope.launch { (if (i == 0) hojeScroll else histScroll).animateScrollTo(0) } // tocar na aba aberta volta ao topo
+                },
                 onGear = { tick(); sheetOpen = !sheetOpen },
             )
             Box(Modifier.fillMaxSize()) {
@@ -367,6 +370,7 @@ fun HomeScreen(vm: HabitViewModel) {
                     },
                     onBackupFolder = { pendingFreq = maxOf(u.state.backupFreq, 1); folderPicker.launch(null) },
                     onBackupNow = { backupNow() },
+                    onShareError = if (CrashLog.exists(ctx)) ({ CrashLog.share(ctx) }) else null,
                     onAddTile = if (Build.VERSION.SDK_INT >= 33) ({ HabitTileService.requestAdd(ctx) { added -> if (added) toast("Bloco adicionado") } }) else null,
                     onAddWidget = { small ->
                         val mgr = android.appwidget.AppWidgetManager.getInstance(ctx)

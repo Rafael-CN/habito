@@ -89,6 +89,7 @@ class SettingsActions(
     val onSeal: (Int, String) -> Unit, val onUnseal: () -> Unit,
     val onBackupFreq: (Int) -> Unit, val onBackupFolder: () -> Unit, val onBackupNow: () -> Unit,
     val onAddTile: (() -> Unit)?,
+    val onShareError: (() -> Unit)?,
     val tick: () -> Unit,
 )
 
@@ -255,6 +256,14 @@ internal fun SettingsContent(s: HabitState, unrestricted: Boolean, lastBackup: L
                 Track(HabitStore.HOUR_OPTIONS.map { "%02d h".format(it) }, HabitStore.HOUR_OPTIONS.indexOf(s.rolloverHour), { a.tick(); a.onHour(HabitStore.HOUR_OPTIONS[it]) }, Modifier.width(190.dp))
             }
             Note("Para quem dorme tarde: às 3 h, o que você marcar de madrugada ainda conta para o dia anterior.")
+            a.onShareError?.let { share ->
+                Row(Modifier.fillMaxWidth().height(44.dp).clip(RoundedCornerShape(Radius.control)).clickable(onClick = share), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Último erro", style = Type.bodyL, color = pal.ink, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                    Text("enviar", style = Type.body, color = pal.text2, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.width(10.dp))
+                    Icon(painterResource(R.drawable.ic_arrow_out), null, Modifier.size(16.dp), tint = pal.text3)
+                }
+            }
             Row(
                 Modifier.fillMaxWidth().height(44.dp).clip(RoundedCornerShape(Radius.control)).clickable(onClick = a.onBattery),
                 verticalAlignment = Alignment.CenterVertically,
@@ -266,7 +275,7 @@ internal fun SettingsContent(s: HabitState, unrestricted: Boolean, lastBackup: L
             }
         }
         Text(
-            "Hábito 3.3 · fonte Archivo (OFL) · seus dados ficam só neste aparelho",
+            "Hábito 4.0 · fonte Archivo (OFL) · seus dados ficam só neste aparelho",
             style = Type.caption, color = pal.text3, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             modifier = Modifier.fillMaxWidth().padding(top = 22.dp, bottom = 8.dp),
         )
@@ -342,9 +351,11 @@ private fun LetterEditor(s: HabitState, a: SettingsActions, onDone: () -> Unit) 
     LetterField(text, { text = it }, if (sealed != null) "Trocar por outra frase…" else "Por que este hábito?", minHeight = 84)
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
         OutlineButton("Lacrar", null, { if (text.isNotBlank()) { a.tick(); a.onSeal(day, text); onDone() } }, Modifier.weight(1f))
+        var confirm by remember { mutableStateOf(false) }
+        androidx.compose.runtime.LaunchedEffect(confirm) { if (confirm) { delay(3000); confirm = false } }
         if (sealed != null) Text(
-            "Apagar", style = Type.body, color = pal.miss, fontWeight = FontWeight.Medium,
-            modifier = Modifier.clip(RoundedCornerShape(Radius.control)).clickable { a.tick(); a.onUnseal(); onDone() }.padding(horizontal = 12.dp, vertical = 10.dp),
+            if (confirm) "Apagar mesmo" else "Apagar", style = Type.body, color = pal.miss, fontWeight = if (confirm) FontWeight.Bold else FontWeight.Medium,
+            modifier = Modifier.clip(RoundedCornerShape(Radius.control)).clickable { a.tick(); if (confirm) { a.onUnseal(); onDone() } else confirm = true }.padding(horizontal = 12.dp, vertical = 10.dp),
         )
     }
 }

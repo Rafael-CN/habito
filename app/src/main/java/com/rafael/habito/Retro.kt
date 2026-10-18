@@ -164,7 +164,13 @@ private fun MiniMonth(u: HabitUi, m: YearMonth) {
                             Canvas(Modifier.fillMaxSize().graphicsLayer { alpha = (lit.value - day + 1).coerceIn(0.25f, 1f) }) {
                                 val cr = CornerRadius(Radius.cell.toPx())
                                 drawRoundRect(if (out) pal.surface else pal.levels[level], cornerRadius = cr)
-                                if (!out && u.markOf(d) == Mark.MISSED) drawCircle(pal.miss, 2.5.dp.toPx(), Offset(size.width - 8.dp.toPx(), size.height - 8.dp.toPx()))
+                                when {
+                                    out -> Unit
+                                    d in u.state.scars -> stitch(pal, Offset.Zero, size.width, size.height, 4.dp.toPx(), vertical = false)
+                                    d in u.state.tropes -> tropeMark(pal, Offset(size.width - 15.dp.toPx(), size.height - 15.dp.toPx()), 11.dp.toPx(), 2.dp.toPx())
+                                    u.markOf(d) == Mark.MISSED -> drawCircle(pal.miss, 2.5.dp.toPx(), Offset(size.width - 8.dp.toPx(), size.height - 8.dp.toPx()))
+                                }
+                                if (!out && d in u.milestones) star(pal.levelInk[level], Offset(size.width - 9.dp.toPx(), size.height - 9.dp.toPx()), 10.dp.toPx())
                             }
                             Text("$day", style = Type.caption, color = if (out) pal.text3 else pal.levelInk[level], fontWeight = FontWeight.Medium, modifier = Modifier.padding(start = 6.dp, top = 4.dp))
                         }

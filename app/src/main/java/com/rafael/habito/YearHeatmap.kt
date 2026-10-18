@@ -55,6 +55,8 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import kotlinx.coroutines.delay
 import java.time.LocalDate
 import java.time.YearMonth
@@ -81,6 +83,16 @@ fun DrawScope.star(color: Color, center: Offset, len: Float, turn: Float = 0f) {
         val d = Offset(kotlin.math.cos(a).toFloat() * half, kotlin.math.sin(a).toFloat() * half)
         drawLine(color, center - d, center + d, strokeWidth = w, cap = StrokeCap.Round)
     }
+}
+
+/** "feito", "tropeço", "fora · voltou 15 out", "não fiz", "descanso" ou "sem registro". */
+fun dayState(u: HabitUi, d: LocalDate): String = when {
+    d in u.state.scars -> u.state.runs.firstOrNull { it.start.isAfter(d) }?.let { "fora · voltou ${Cal.shortDate(it.start).substringAfter(", ")}" } ?: "fora"
+    d in u.state.tropes -> "tropeço"
+    u.markOf(d) == Mark.DONE -> "feito"
+    u.markOf(d) == Mark.MISSED -> "não fiz"
+    u.state.isRest(d) -> "descanso"
+    else -> "sem registro"
 }
 
 /** Marco numa célula pequena: o quadrado vira asterisco, um pouco maior que ele. */
@@ -284,6 +296,14 @@ fun YearHeatmap(
     val openMonth by rememberUpdatedState(onMonth)
 
     val todayMark = u.todayMark
+    val todayStar = today in u.milestones
+    val starBirth = remember { Animatable(1f) }
+    val hadStar = remember { mutableStateOf(todayStar) }
+    LaunchedEffect(todayStar) {
+        val was = hadStar.value
+        hadStar.value = todayStar
+        if (todayStar && !was && !reduce) { starBirth.snapTo(0f); delay(200); starBirth.animateTo(1f, androidx.compose.animation.core.spring(0.55f, 260f)) }
+    }
     val todayColor by animateColorAsState(pal.levels[u.level(today)], motion(Motion.slow), label = "today")
     // Com um dia anotado, os meses recuam para o rótulo da anotação ocupar o eixo sozinho.
     val monthsTarget = if (selected != null) Alpha.faded + (1f - Alpha.faded) * back else 1f
@@ -310,7 +330,12 @@ fun YearHeatmap(
     val gridW = STEP * YEAR_WEEKS + 4.dp // folga para o anel do marco na última coluna
     val gridH = MONTH_H + STEP * 7 - GAP
     val sel = selected?.takeIf { !it.isBefore(start) && !it.isAfter(today) }
-    Row {
+    val summary = remember(u) {
+        val ms = u.milestones.size
+        "Mapa do ano: ${u.year} dias feitos, sequência de ${u.streak}" + (if (ms > 0) ", $ms ${if (ms == 1) "marco" else "marcos"}" else "") +
+            (if (u.state.tropes.isNotEmpty()) ", ${u.state.tropes.size} tropeços" else "")
+    }
+    Row(Modifier.semantics(mergeDescendants = true) { contentDescription = summary }) {
         Column(Modifier.width(LABEL_W).padding(top = MONTH_H)) {
             for (row in 0 until 7) {
                 Box(Modifier.height(STEP), contentAlignment = Alignment.CenterStart) {
@@ -433,7 +458,9 @@ fun YearHeatmap(
                         }
                     }
                     val todayTl = at(todayIndex)
-                    habitCell(pal, todayTl, cell, radius, todayColor, todayMark, isToday = true, selected = sel == today, milestone = today in u.milestones, call = u.state.pendingTrope)
+                    if (todayStar) starCell(pal, todayTl, cell, turn = (1f - starBirth.value) * -120f, scale = starBirth.value.coerceAtLeast(0.01f))
+                    else habitCell(pal, todayTl, cell, radius, todayColor, todayMark, isToday = true, selected = false, call = u.state.pendingTrope)
+                    if (sel == today) { val o = 2.dp.toPx(); drawRoundRect(pal.ink, todayTl - Offset(o, o), Size(cell + 2 * o, cell + 2 * o), CornerRadius(radius + o), style = Stroke(2.dp.toPx())) }
                     if (halo.value > 0f) {
                         val grow = (1f - halo.value) * cell * 0.6f
                         drawRoundRect(
@@ -456,7 +483,7 @@ fun YearHeatmap(
                 // Rótulo da anotação, preso ao eixo dos meses; perto do fim do ano vira para a esquerda.
                 if (sel != null) {
                     val i = ChronoUnit.DAYS.between(start, sel).toInt()
-                    val state = when (u.markOf(sel)) { Mark.DONE -> "Feito"; Mark.MISSED -> "Não fiz"; null -> "Sem registro" }
+                    val state = dayState(u, sel).replaceFirstChar { it.uppercase() }
                     val ms = u.milestones[sel]
                     val text = "$state · ${if (sel == today) "hoje" else Cal.shortDate(sel)}" + (if (ms != null) " · marco de $ms" else "")
                     val density = LocalDensity.current
@@ -496,7 +523,7 @@ fun Legend(hint: Boolean) {
     val pal = Tokens
     Row(Modifier.fillMaxWidth().height(18.dp), verticalAlignment = Alignment.CenterVertically) {
         if (hint) {
-            Text("Toque de novo para mudar", style = Type.caption, color = pal.ink, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+            Spacer(Modifier.weight(1f))
         } else {
             Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                 Canvas(Modifier.size(5.dp)) { drawCircle(pal.miss) }
