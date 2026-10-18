@@ -279,7 +279,7 @@ internal fun SettingsContent(s: HabitState, unrestricted: Boolean, lastBackup: L
             }
         }
         Text(
-            "Hábito 4.2 · fonte Archivo (OFL) · seus dados ficam só neste aparelho",
+            "Hábito 4.3 · fonte Archivo (OFL) · seus dados ficam só neste aparelho",
             style = Type.caption, color = pal.text3, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             modifier = Modifier.fillMaxWidth().padding(top = 22.dp, bottom = 8.dp),
         )
