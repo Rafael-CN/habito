@@ -161,27 +161,10 @@ internal fun Section(index: Int, content: @Composable () -> Unit) {
     }
 }
 
-/** A tarefa à esquerda; à direita, o estado de hoje num quadradinho. */
+/** A tarefa. O estado de hoje já está no bloco logo abaixo. */
 @Composable
 internal fun Top(u: HabitUi) {
-    val pal = Tokens
-    val mark = u.todayMark
-    val fill by animateColorAsState(if (mark == Mark.DONE) pal.done else Color.Transparent, motion(Motion.base), label = "st")
-    val label by animateColorAsState(if (mark == Mark.DONE) pal.ink else pal.text3, motion(Motion.base), label = "stl")
-    Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(u.state.taskName, style = Type.title, color = pal.ink, maxLines = 1, modifier = Modifier.weight(1f))
-        Canvas(Modifier.size(10.dp)) {
-            when (mark) {
-                Mark.MISSED -> drawCircle(pal.miss, 3.dp.toPx())
-                else -> {
-                    drawRect(fill)
-                    if (mark == null) drawRect(pal.line, style = Stroke(1.dp.toPx()))
-                }
-            }
-        }
-        Spacer(Modifier.width(7.dp))
-        Text("HOJE", style = Type.caps, color = label)
-    }
+    Text(u.state.taskName, style = Type.title, color = Tokens.ink, maxLines = 1, modifier = Modifier.fillMaxWidth().padding(top = 12.dp))
 }
 
 /** A sequência atual, o único número enorme. Ao rolar, encolhe para o canto e cede lugar à barra compacta. */
@@ -202,7 +185,7 @@ internal fun Hero(u: HabitUi, scroll: ScrollState, compact: Boolean = false, tim
     val reduce = LocalReduceMotion.current
     Row(Modifier.fillMaxWidth().padding(top = if (compact) 10.dp else 18.dp), verticalAlignment = Alignment.Bottom) {
         Box(
-            Modifier.weight(4f).offset(x = (-4).dp).graphicsLayer {
+            Modifier.offset(x = (-4).dp).graphicsLayer {
                 val t = if (reduce) 0f else (scroll.value / span).coerceIn(0f, 1f)
                 val s = 1f - t * 0.42f
                 scaleX = s; scaleY = s
@@ -221,7 +204,7 @@ internal fun Hero(u: HabitUi, scroll: ScrollState, compact: Boolean = false, tim
         Text(
             unitLabel(u, "\n"),
             style = Type.title.copy(fontWeight = FontWeight.Medium, lineHeight = 20.sp), color = pal.ink,
-            modifier = Modifier.weight(2f).padding(bottom = 16.dp),
+            modifier = Modifier.padding(start = 14.dp, bottom = 16.dp),
         )
     }
     ReturnLine(u)
@@ -234,7 +217,7 @@ private fun ReturnLine(u: HabitUi) {
     val back = !u.weekly && u.state.inReturn
     val sealed = u.state.sealed
     AnimatedVisibility(back || sealed != null, enter = fadeIn(tween(Motion.base)) + expandVertically(), exit = fadeOut(tween(Motion.quick)) + shrinkVertically()) {
-        Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             if (sealed != null) { SealChip(sealed.forDay); Spacer(Modifier.width(10.dp)) }
             if (back) Text(
                 "${u.state.returnNumber}ª volta", style = Type.caption, color = pal.ink, fontWeight = FontWeight.SemiBold,
@@ -267,7 +250,7 @@ internal fun Gauge(u: HabitUi) {
     val left = next - streak
     GaugeRuler(
         n = n, target = (streak - prev).toFloat() / span * n, start = "$prev", end = "$next",
-        middle = "${if (left == 1) "falta 1 dia" else "faltam $left dias"} para o marco de $next",
+        middle = "",
     )
 }
 
@@ -343,8 +326,6 @@ internal fun CompactHeader(u: HabitUi, scroll: ScrollState) {
 internal fun TodayPanel(u: HabitUi, ripple: Int, onDone: () -> Unit, onSkip: () -> Unit, onDay: (LocalDate) -> Unit) {
     val pal = Tokens
     Panel {
-        Caps("Hoje")
-        Spacer(Modifier.height(14.dp))
         Text(
             androidx.compose.ui.text.buildAnnotatedString {
                 append(u.today.format(WEEKDAY).replaceFirstChar { it.uppercase() } + ", ")
@@ -552,6 +533,7 @@ internal fun HojePage(
     u: HabitUi, ripple: Int, scroll: ScrollState,
     onDone: () -> Unit, onSkip: () -> Unit, onDay: (LocalDate) -> Unit, onHistory: () -> Unit,
     onGrid: (androidx.compose.ui.geometry.Rect) -> Unit = {},
+    footer: @Composable () -> Unit = {},
 ) {
     val time = rememberFrameTime()
     val pal = Tokens
@@ -583,6 +565,7 @@ internal fun HojePage(
             Rule(index = 2)
             MiniYear(u, onHistory, onGrid)
         }
+        footer()
     }
     }
 }

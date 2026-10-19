@@ -12,8 +12,8 @@ android {
         applicationId = "com.rafael.habito"
         minSdk = 31 // S22 Ultra roda Android 12+; widgets com cantos e configuração opcional
         targetSdk = 34
-        versionCode = 22
-        versionName = "4.6"
+        versionCode = 23
+        versionName = "4.7"
     }
     buildFeatures { compose = true }
     buildTypes {

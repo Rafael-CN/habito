@@ -206,16 +206,16 @@ internal fun SettingsContent(s: HabitState, unrestricted: Boolean, lastBackup: L
         }
         Swatches(s.palette) { a.tick(); a.onPalette(it) }
         PalettePreview(s)
-        SwitchRow("Papel tingido", "No claro, o fundo ganha um tom da cor.", s.paper) { a.tick(); a.onPaper(it) }
-        SwitchRow("Ícone na cor", "O ícone do app troca junto com a cor do mapa.", s.iconFollows) { a.tick(); a.onIconFollows(it) }
+        SwitchRow("Papel tingido", s.paper) { a.tick(); a.onPaper(it) }
+        SwitchRow("Ícone na cor", s.iconFollows) { a.tick(); a.onIconFollows(it) }
         Labeled("Tema") { Track(listOf("Sistema", "Claro", "Escuro"), s.themeMode, { a.tick(); a.onTheme(it) }, Modifier.width(210.dp)) }
         Labeled("A semana começa") { Track(listOf("Domingo", "Segunda"), if (s.mondayFirst) 1 else 0, { a.tick(); a.onMonday(it == 1) }, Modifier.width(210.dp)) }
 
         // 3 · sensações
         Group("Sensações")
-        SwitchRow("Vibrar ao marcar", "Um toque firme no feito, leve no não fiz.", s.haptics) { a.onHaptics(it) }
-        SwitchRow("Sons", "Cada cor toca o seu instrumento.", s.sounds) { a.onSounds(it) }
-        SwitchRow("Comemorar marcos", "7, 30, 100 e 365 dias acendem a sequência.", s.celebrate) { a.tick(); a.onCelebrate(it) }
+        SwitchRow("Vibrar ao marcar", s.haptics) { a.onHaptics(it) }
+        SwitchRow("Sons", s.sounds) { a.onSounds(it) }
+        SwitchRow("Comemorar marcos", s.celebrate) { a.tick(); a.onCelebrate(it) }
 
         // 4 · histórico: a cópia automática, sempre à vista
         Group("Histórico")
@@ -278,9 +278,10 @@ internal fun SettingsContent(s: HabitState, unrestricted: Boolean, lastBackup: L
                 Spacer(Modifier.width(10.dp))
                 Icon(painterResource(R.drawable.ic_arrow_out), null, Modifier.size(16.dp), tint = pal.text3)
             }
+            Text("Fonte Archivo (SIL Open Font License)", style = Type.caption, color = pal.text3, modifier = Modifier.padding(top = 10.dp, bottom = 4.dp))
         }
         Text(
-            "Hábito 4.6 · fonte Archivo (OFL) · seus dados ficam só neste aparelho",
+            "Hábito 4.7 · seus dados ficam só neste aparelho",
             style = Type.caption, color = pal.text3, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             modifier = Modifier.fillMaxWidth().padding(top = 22.dp, bottom = 8.dp),
         )
@@ -561,7 +562,7 @@ internal fun Switch(on: Boolean) {
 }
 
 @Composable
-private fun SwitchRow(title: String, sub: String, on: Boolean, onChange: (Boolean) -> Unit) {
+private fun SwitchRow(title: String, on: Boolean, onChange: (Boolean) -> Unit) {
     val pal = Tokens
     Column {
         Row(
@@ -570,10 +571,7 @@ private fun SwitchRow(title: String, sub: String, on: Boolean, onChange: (Boolea
                 .padding(vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(Modifier.weight(1f)) {
-                Text(title, style = Type.bodyL, color = pal.ink, fontWeight = FontWeight.Medium)
-                Text(sub, style = Type.body.copy(fontSize = 12.sp, lineHeight = 16.sp), color = pal.text2)
-            }
+            Text(title, style = Type.bodyL, color = pal.ink, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
             Spacer(Modifier.width(12.dp))
             Switch(on)
         }
@@ -628,14 +626,15 @@ private fun Swatches(selected: String, onSelect: (String) -> Unit) {
 }
 
 /**
- * As últimas 26 semanas na cor escolhida. Trocar de cor pinga a tinta acima da amostra tocada e ela se espalha
+ * Os últimos 21 dias numa linha, na cor escolhida. Trocar de cor pinga a tinta acima da amostra tocada e ela se espalha
  * pelo mapa: cada quadrado muda quando a onda passa, com um pulinho.
  */
 @Composable
 private fun PalettePreview(s: HabitState) {
     val pal = Tokens
     val today = s.today
-    val levels = remember(s) { Cal.levels(s, today.minusDays(26 * 7L), today) }
+    val days = 21
+    val levels = remember(s) { Cal.levels(s, today.minusDays(days.toLong()), today) }
     val dark = pal.bg.red < 0.5f
     val shown = remember { mutableStateOf(s.palette) }
     val from = remember { mutableStateOf(s.palette) }
@@ -649,16 +648,14 @@ private fun PalettePreview(s: HabitState) {
     val oldLv = remember(from.value, dark, s.paper) { paletteFor(from.value, dark, s.paper).levels }
     val newLv = remember(s.palette, dark, s.paper) { paletteFor(s.palette, dark, s.paper).levels }
     val originX = (Accents.NAMES.indexOf(s.palette).coerceAtLeast(0) + 0.5f) / Accents.NAMES.size
-    Box(Modifier.fillMaxWidth().padding(top = 12.dp).clip(RoundedCornerShape(Radius.panel)).background(pal.surface).padding(10.dp)) {
-        Canvas(Modifier.fillMaxWidth().aspectRatio(26f / 7f)) {
-            val weeks = 26; val gap = 2.dp.toPx()
-            val cell = (size.width - gap * (weeks - 1)) / weeks
-            val first = today.minusDays(((weeks - 1) * 7 + Cal.rowOf(today)).toLong())
-            for (col in 0 until weeks) for (row in 0 until 7) {
-                val d = first.plusDays((col * 7 + row).toLong())
-                if (d.isAfter(today)) continue
+    Box(Modifier.fillMaxWidth().padding(top = 12.dp)) {
+        Canvas(Modifier.fillMaxWidth().aspectRatio(days * 1.18f)) {
+            val gap = 3.dp.toPx()
+            val cell = (size.width - gap * (days - 1)) / days
+            for (col in 0 until days) {
+                val d = today.minusDays((days - 1 - col).toLong())
                 val lv = levels[d] ?: 0
-                val tl = Offset(col * (cell + gap), row * (cell + gap))
+                val tl = Offset(col * (cell + gap), (size.height - cell) / 2)
                 // A onda sai de cima da amostra tocada; a frente passa por cada quadrado e ele troca de cor.
                 val dist = kotlin.math.hypot(tl.x + cell / 2 - originX * size.width, tl.y + cell / 2 + 24.dp.toPx())
                 val front = ink.value * (size.width * 1.25f) - dist

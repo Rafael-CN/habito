@@ -324,6 +324,18 @@ fun HomeScreen(vm: HabitViewModel) {
                         onDay = { d -> change(d, Cal.next(u.markOf(d))) },
                         onHistory = goHistory,
                         onGrid = { gridRect = it },
+                        footer = {
+                            // Uma vez por mês no máximo: a história está só neste celular há tempo demais.
+                            val s = u.state
+                            val show = AutoBackup.stale(s) && s.done.size >= 30 && System.currentTimeMillis() - s.backupNudge > 30L * 24 * 60 * 60 * 1000
+                            androidx.compose.animation.AnimatedVisibility(show, enter = androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.shrinkVertically()) {
+                                BackupNudge(
+                                    s,
+                                    onSave = { tick(); vm.dismissBackupNudge(); if (s.backupUri.isNotEmpty()) backupNow() else sheetOpen = true },
+                                    onDismiss = { tick(); vm.dismissBackupNudge() },
+                                )
+                            }
+                        },
                     ) else HistoriaPage(
                         u, histScroll, period, onPeriod = { tick(); period = it },
                         map = {
@@ -397,16 +409,6 @@ fun HomeScreen(vm: HabitViewModel) {
             )
         }
 
-        // Uma vez, no Hoje: a história está só neste celular há tempo demais.
-        if (u != null && pager.currentPage == 0 && !sheetOpen && month == null && retro == null) {
-            val s = u.state
-            val show = AutoBackup.stale(s) && s.done.size >= 30 && System.currentTimeMillis() - s.backupNudge > 30L * 24 * 60 * 60 * 1000
-            if (show) BackupNudge(
-                AutoBackup.daysWithout(s), Modifier.align(Alignment.BottomCenter),
-                onSave = { tick(); vm.dismissBackupNudge(); if (s.backupUri.isNotEmpty()) backupNow() else sheetOpen = true },
-                onDismiss = { tick(); vm.dismissBackupNudge() },
-            )
-        }
 
         // Dia 1: a pergunta. Marco com frase lacrada: a frase abre.
         if (u != null) androidx.compose.animation.AnimatedVisibility(u.empty && !u.state.letterAsked, enter = androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.fadeOut()) {
@@ -465,18 +467,19 @@ private fun RestoreConfirm(p: Backup.Preview, now: HabitState, onConfirm: () -> 
     }
 }
 
-/** "40 dias sem cópia · Guardar", calmo, no pé do Hoje. Aparece uma vez por mês no máximo. */
+/** "40 dias sem cópia · Guardar", calmo, no fim do Hoje. Aparece uma vez por mês no máximo. */
 @Composable
-private fun BackupNudge(days: Int, modifier: Modifier, onSave: () -> Unit, onDismiss: () -> Unit) {
+private fun BackupNudge(s: HabitState, onSave: () -> Unit, onDismiss: () -> Unit) {
     val pal = Tokens
+    val days = AutoBackup.daysWithout(s)
     Row(
-        modifier.navigationBarsPadding().padding(Space.l).fillMaxWidth().clip(RoundedCornerShape(Radius.control)).background(pal.surface)
+        Modifier.padding(top = 20.dp).fillMaxWidth().clip(RoundedCornerShape(Radius.control)).background(pal.surface)
             .border(1.dp, pal.rule, RoundedCornerShape(Radius.control)).padding(start = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Canvas(Modifier.size(7.dp)) { drawCircle(pal.gold) }
         Spacer(Modifier.width(10.dp))
-        Text("$days dias sem cópia", style = Type.body, color = pal.text2, modifier = Modifier.weight(1f))
+        Text(if (s.backupAt == 0L) "Nenhuma cópia ainda" else "$days dias sem cópia", style = Type.body, color = pal.text2, modifier = Modifier.weight(1f))
         Text("Guardar", style = Type.body, color = pal.ink, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable(onClick = onSave).padding(horizontal = 12.dp, vertical = 14.dp))
         Box(Modifier.size(44.dp).clickable(onClick = onDismiss), contentAlignment = Alignment.Center) {
             Icon(painterResource(R.drawable.ic_x), "Dispensar", Modifier.size(14.dp), tint = pal.text3)

@@ -53,6 +53,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -66,13 +67,17 @@ private fun ym(m: YearMonth) = m.format(MONTH_NAME).replaceFirstChar { it.upperc
 internal fun monthsIn(u: HabitUi, period: Int): List<YearMonth> {
     val out = mutableListOf<YearMonth>()
     var m = YearMonth.from(u.today)
-    val first = YearMonth.from(u.start)
+    val first = maxOf(YearMonth.from(u.start), YearMonth.from(firstRecord(u)))
     while (m >= first) { if (period == 0 || m.year == period) out += m; m = m.minusMonths(1) }
     return out
 }
 
 /** Anos que aparecem na janela, do mais recente ao mais antigo. */
-internal fun yearsIn(u: HabitUi): List<Int> = (u.today.year downTo u.start.year).toList()
+internal fun yearsIn(u: HabitUi): List<Int> = (u.today.year downTo maxOf(u.start.year, firstRecord(u).year)).toList()
+
+/** O primeiro dia com registro dentro da janela (hoje, se ainda não há nenhum). */
+internal fun firstRecord(u: HabitUi): LocalDate =
+    (u.state.done + u.state.missed).filter { !it.isBefore(u.start) }.minOrNull() ?: u.today
 
 /** Feitos no período (12 meses = a janela inteira). */
 internal fun doneIn(u: HabitUi, period: Int): Int =
@@ -91,7 +96,6 @@ internal fun HistoriaPage(
     val pal = Tokens
     val years = remember(u.today, u.start) { yearsIn(u) }
     val options = listOf(0) + years
-    val total = remember(u, period) { doneIn(u, period) }
     Column(
         Modifier
             .fillMaxSize()
@@ -102,11 +106,7 @@ internal fun HistoriaPage(
     ) {
         Column(Modifier.entrance(0)) {
             Rule(index = 0)
-            Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.Bottom) {
-                Text("História", style = Type.monthTitle, color = pal.ink, modifier = Modifier.weight(1f).padding(bottom = 4.dp))
-                RollingLabel(if (total == 1) "1 dia feito" else "$total dias feitos", Type.caption.copy(fontSize = androidx.compose.ui.unit.TextUnit(12f, androidx.compose.ui.unit.TextUnitType.Sp)), pal.text3, Modifier.padding(bottom = 8.dp))
-            }
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(12.dp))
             Track(options.map { if (it == 0) "12 meses" else "$it" }, options.indexOf(period).coerceAtLeast(0), { onPeriod(options[it]) })
         }
 
@@ -118,7 +118,7 @@ internal fun HistoriaPage(
 
         Column(Modifier.padding(top = Space.section).entrance(2)) {
             Rule(index = 2)
-            SectionHead("Meses", "toque para abrir")
+            SectionHead("Meses", "")
             Spacer(Modifier.height(4.dp))
             monthsIn(u, period).forEachIndexed { k, m -> MonthRow(u, m, k, onMonth) }
         }
@@ -162,7 +162,7 @@ internal fun HistoriaPage(
         }
 
         Row(Modifier.fillMaxWidth().padding(top = 40.dp, bottom = 80.dp)) {
-            Text("Hábito 4.6", style = Type.caption, color = pal.text3, modifier = Modifier.weight(1f))
+            Text("Hábito 4.7", style = Type.caption, color = pal.text3, modifier = Modifier.weight(1f))
             Text("um hábito, um quadrado por dia", style = Type.caption, color = pal.text3)
         }
     }
