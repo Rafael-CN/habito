@@ -212,7 +212,7 @@ internal fun Hero(u: HabitUi, scroll: ScrollState, compact: Boolean = false, tim
                 val t = scrollT
                 val s = (1f - t * 0.42f) * (1f + punch)
                 scaleX = s; scaleY = s * (1f - 0.06f * deflate.value)
-                translationY = -22.dp.toPx() * t
+                translationY = -22.dp.toPx() * t + minOf(scroll.value.toFloat(), span) * 0.32f
                 if (shake > 0f) {
                     translationX = (kotlin.random.Random.nextFloat() - 0.5f) * shake.dp.toPx()
                     translationY += (kotlin.random.Random.nextFloat() - 0.5f) * shake.dp.toPx()
@@ -287,6 +287,16 @@ internal fun Gauge(u: HabitUi) {
         )
         return
     }
+    if (isMilestone(streak) && u.todayMark == Mark.DONE) {
+        val before = MILESTONE_STEPS.lastOrNull { it < streak } ?: 0
+        val n = minOf(streak - before, 30)
+        val launching = LocalFx.current.launchAt != 0L
+        GaugeRuler(
+            n = n, target = n.toFloat(), start = "$before", end = "$streak", middle = "",
+            stagger = if (launching) 900L / n else 22L, startDelay = if (launching) 250L else 0L,
+        )
+        return
+    }
     val next = MILESTONE_STEPS.firstOrNull { it > streak } ?: ((streak / 365 + 1) * 365)
     val prev = MILESTONE_STEPS.lastOrNull { it <= streak && it < next } ?: 0
     val span = next - prev
@@ -299,7 +309,7 @@ internal fun Gauge(u: HabitUi) {
 }
 
 @Composable
-internal fun GaugeRuler(n: Int, target: Float, start: String, end: String, middle: String, pulse: Int = 0) {
+internal fun GaugeRuler(n: Int, target: Float, start: String, end: String, middle: String, pulse: Int = 0, stagger: Long = 22L, startDelay: Long = 0L) {
     val pal = Tokens
     val reduce = LocalReduceMotion.current
     // Depois do feito, os últimos traços acesos pulam um a um, no ritmo dos tiques da régua (Sounds.tick).
@@ -324,7 +334,7 @@ internal fun GaugeRuler(n: Int, target: Float, start: String, end: String, middl
             val on = if (i < lit) 1f else 0f
             launch {
                 if (reduce) ticks[i].snapTo(on)
-                else { delay(k * 22L); ticks[i].animateTo(on, spring(0.5f, 520f)) }
+                else { delay(startDelay + k * stagger); ticks[i].animateTo(on, spring(0.5f, 520f)) }
             }
         }
     }
@@ -492,7 +502,7 @@ internal fun CheckMark(color: Color, progress: Float) {
 internal fun ActionBox(onClick: () -> Unit, modifier: Modifier, content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit) {
     val press = remember { MutableInteractionSource() }
     val pressed by press.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed && !LocalReduceMotion.current) 0.975f else 1f, Motion.press, label = "press")
+    val scale by animateFloatAsState(if (pressed && !LocalReduceMotion.current) 0.95f else 1f, if (pressed) Motion.press else spring(0.45f, 700f), label = "press")
     Box(
         Modifier.fillMaxHeight().scale(scale).clip(RoundedCornerShape(Radius.control)).then(modifier)
             .clickable(press, indication = null, onClick = onClick),
@@ -520,6 +530,16 @@ internal fun WeekStrip(u: HabitUi, ripple: Int, onDay: (LocalDate) -> Unit) {
                 }
                 val mark = u.markOf(d)
                 val isToday = d == u.today
+                val fxw = LocalFx.current
+                val reduceW = LocalReduceMotion.current
+                val drop = remember { Animatable(1f) }
+                val wasMissed = remember { mutableStateOf(mark == Mark.MISSED) }
+                LaunchedEffect(mark) {
+                    val was = wasMissed.value; wasMissed.value = mark == Mark.MISSED
+                    if (isToday && mark == Mark.MISSED && !was && !reduceW) { drop.snapTo(0f); drop.animateTo(1f, spring(0.42f, 420f)) }
+                }
+                val rise = remember { Animatable(1f) }
+                LaunchedEffect(fxw.openAt) { if (fxw.openAt > 0 && !reduceW) { rise.snapTo(0f); delay(560L + k * 40L); rise.animateTo(1f, tween(360, easing = FastOutSlowInEasing)) } }
                 val trope = d in u.state.tropes
                 val scar = d in u.state.scars
                 val call = isToday && mark == null && u.state.pendingTrope
@@ -543,6 +563,7 @@ internal fun WeekStrip(u: HabitUi, ripple: Int, onDay: (LocalDate) -> Unit) {
                 }
                 Box(
                     Modifier.fillMaxWidth().aspectRatio(1f)
+                        .graphicsLayer { if (rise.value < 1f) { alpha = rise.value; translationY = (1f - rise.value) * 8.dp.toPx() } }
                         .then(if (isToday) Modifier.onGloballyPositioned { fx.todayCell = it.boundsInRoot() } else Modifier)
                         .graphicsLayer { translationY = -4.dp.toPx() * lift.value; scaleX = scale; scaleY = scale }
                         .clickable(interactionSource = press, indication = null) { onDay(d) },
@@ -553,7 +574,10 @@ internal fun WeekStrip(u: HabitUi, ripple: Int, onDay: (LocalDate) -> Unit) {
                         else drawRoundRect(color, cornerRadius = r)
                         if (scar) stitch(pal, Offset.Zero, size.width, size.height, 6.dp.toPx(), vertical = false)
                         else if (trope) tropeMark(pal, Offset(size.width - 17.dp.toPx(), size.height - 17.dp.toPx()), 13.dp.toPx(), 2.dp.toPx())
-                        else if (mark == Mark.MISSED) drawCircle(pal.miss, 2.5.dp.toPx(), Offset(size.width - 8.5.dp.toPx(), size.height - 8.5.dp.toPx()))
+                        else if (mark == Mark.MISSED) {
+                            val k = drop.value
+                            drawCircle(pal.miss, 2.5.dp.toPx() * (0.4f + 0.6f * k).coerceAtLeast(0.4f), Offset(size.width - 8.5.dp.toPx(), size.height - 8.5.dp.toPx() - (1f - k) * 14.dp.toPx()), alpha = k.coerceIn(0f, 1f))
+                        }
                         else if (u.state.isRest(d) && d != u.today) drawRect(pal.text3.copy(alpha = 0.7f), Offset(size.width - 16.dp.toPx(), size.height - 9.dp.toPx()), Size(8.dp.toPx(), 1.5.dp.toPx()))
                         if (call) callRing(pal, Offset.Zero, size.width, size.height, r.x, breathe)
                         else if (isToday && mark == null) {

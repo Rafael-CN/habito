@@ -98,6 +98,11 @@ fun HabitTheme(palette: String = "verde", mode: Int = 0, paper: Boolean = false,
                             fillType = androidx.compose.ui.graphics.PathFillType.EvenOdd
                         }
                         clipPath(hole) { drawLayer(layer) }
+                        if (o != null && k in 0.001f..0.999f) {
+                            val ink4 = p.levels[3]
+                            drawCircle(ink4.copy(alpha = 0.10f * (1f - k)), r, c)
+                            drawCircle(ink4.copy(alpha = 0.55f * (1f - k * k)), r, c, style = androidx.compose.ui.graphics.drawscope.Stroke(width = (10f - 7f * k) * density))
+                        }
                     } else drawContent()
                 },
             ) { content() }

@@ -162,7 +162,9 @@ fun HomeScreen(vm: HabitViewModel) {
         sound(when (mark) { Mark.DONE -> Sfx.FEITO; Mark.MISSED -> Sfx.NAO_FIZ; null -> Sfx.DESFAZER })
         // Motion: só hoje ganha a cena inteira (número, régua com tiques, tela sem cor no não fiz).
         if (date == cur.today && previous != mark && !reduce) {
-            if (mark == Mark.DONE) {
+            val closesMilestone = !cur.weekly && cur.state.celebrate && cur.todayMark != Mark.DONE && isMilestone(cur.streak + 1)
+            if (mark == Mark.DONE && closesMilestone) Unit
+            else if (mark == Mark.DONE) {
                 fx.feito++
                 if (cur.state.sounds) scope.launch {
                     delay(LADDER_START)

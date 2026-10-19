@@ -169,6 +169,16 @@ fun FxLayer(fx: FxState, pal: Palette) {
                 radius = fx.number.width * (0.7f + 0.4f * rise + after), center = c,
             )
             if (t >= LAUNCH_RISE) {
+                // o glifo da cor gira para dentro no canto do número
+                val g = ((t - LAUNCH_RISE) / 760f).coerceIn(0f, 1f)
+                val ga = if (t < LAUNCH_RISE + 700) 1f else 1f - ((t - LAUNCH_RISE - 700) / 300f).coerceIn(0f, 1f)
+                if (ga > 0f) {
+                    val back = 1f + 2.4f * (g - 1f) * (g - 1f) * (g - 1f) + 1.4f * (g - 1f) * (g - 1f)
+                    star(
+                        pal.levels[4].copy(alpha = ga * g.coerceAtMost(0.25f) * 4f), Offset(fx.number.right + 14 * density, fx.number.top + 26 * density),
+                        30 * density * back.coerceAtLeast(0f), turn = -150f * (1f - ease(g)), glyph = pal.glyph,
+                    )
+                }
                 val k = ((t - LAUNCH_RISE) / 700f).coerceIn(0f, 1f)
                 if (k < 1f) drawCircle(
                     pal.levels[4].copy(alpha = 0.55f * (1f - k)), radius = size.width * (0.15f + 0.9f * ease(k)), center = c,
@@ -232,23 +242,14 @@ fun OpeningGlyph(pal: Palette, onStart: () -> Unit, onEnd: () -> Unit) {
         val ms = t.value
         val bgA = if (ms < 620f) 1f else 1f - ease((ms - 620f) / 320f)
         drawRect(pal.bg.copy(alpha = bgA))
-        val draw = ease(ms / 520f)
-        val shrink = ((ms - 520f) / 260f).coerceIn(0f, 1f)
-        val len = min(size.width, size.height) * 0.22f * (1f - 0.8f * shrink * shrink)
-        val a = 1f - shrink
+        val spin = ease(ms / 560f)
+        val shrink = ((ms - 480f) / 300f).coerceIn(0f, 1f)
+        val grow = 1f + 0.12f * (1f - ease(ms / 200f)) // o ícone do splash sai em 1,12×
+        val len = min(size.width, size.height) * 0.22f * grow * (1f - 0.85f * shrink * shrink)
+        val a = 1f - shrink * shrink
         if (a <= 0f) return@Canvas
-        val c = center
-        // a varredura: um setor que gira revela o glifo
-        val sweep = 360f * draw
-        drawContext.canvas.save()
-        val path = androidx.compose.ui.graphics.Path().apply {
-            moveTo(c.x, c.y)
-            arcTo(Rect(c, len * 1.2f), -90f, sweep.coerceAtLeast(0.1f), false)
-            close()
-        }
-        drawContext.canvas.clipPath(path)
-        star(pal.levels[3].copy(alpha = a), c, len, turn = -60f * (1f - draw), glyph = pal.glyph)
-        drawContext.canvas.restore()
+        val sym = pal.glyph.symmetry.takeIf { it > 0f } ?: 90f
+        star(pal.levels[3].copy(alpha = a), center, len, turn = sym * spin, glyph = pal.glyph)
     }
 }
 

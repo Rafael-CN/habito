@@ -1,5 +1,6 @@
 package com.rafael.habito
 
+import androidx.compose.runtime.mutableStateOf
 import android.graphics.Matrix
 import android.graphics.Region
 import android.view.HapticFeedbackConstants
@@ -78,9 +79,11 @@ fun YearGlyph(u: HabitUi, grid: Rect, marco: Int, startDelay: Long = 560, onEnd:
     val end by rememberUpdatedState(onEnd)
     var t by remember { mutableLongStateOf(0L) }
     var release by remember { mutableLongStateOf(Long.MAX_VALUE) } // quando a volta começa (o toque adianta)
+    var started by remember { mutableStateOf(false) }
     val hold = 2900L
     LaunchedEffect(Unit) {
         kotlinx.coroutines.delay(startDelay) // primeiro o quadrado de hoje se enche (e, com motion, o lançamento do marco)
+        started = true
         val start = withFrameMillis { it }
         var buzzed = false
         while (true) {
@@ -94,11 +97,12 @@ fun YearGlyph(u: HabitUi, grid: Rect, marco: Int, startDelay: Long = 560, onEnd:
     val plan = remember { Plan() }
 
     Canvas(
-        Modifier.fillMaxSize().pointerInput(Unit) {
+        Modifier.fillMaxSize().then(if (!started) Modifier else Modifier.pointerInput(Unit) {
             detectTapGestures { if (release == Long.MAX_VALUE || release > t) release = maxOf(t, 400L) }
-        },
+        }),
     ) {
         // Monta os voos na primeira medida.
+        if (!started) return@Canvas
         if (plan.flyers == null) {
             val weeks = 20
             val gap = 3 * density.density

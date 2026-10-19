@@ -52,7 +52,8 @@ class MainActivity : ComponentActivity() {
         // Abertura: as células do ícone acendem em diagonal; segura só o tempo da animação.
         val opened = SystemClock.uptimeMillis()
         installSplashScreen().apply {
-            setKeepOnScreenCondition { SystemClock.uptimeMillis() - opened < 560 }
+            // Com motion, a abertura é o glifo da cor (OpeningGlyph): o splash sai assim que o app desenha.
+            setKeepOnScreenCondition { animationsOff() && SystemClock.uptimeMillis() - opened < 560 }
             setOnExitAnimationListener { p ->
                 revealed.value = true // a tela entra enquanto a abertura se desfaz
                 // Sem animações, ou com o app já aberto, o sistema pode não criar o ícone: aí só remove.
@@ -60,8 +61,7 @@ class MainActivity : ComponentActivity() {
                 if (icon == null || animationsOff()) {
                     p.remove()
                 } else {
-                    icon.animate().scaleX(1.12f).scaleY(1.12f).setDuration(200).start()
-                    p.view.animate().alpha(0f).setDuration(200).withEndAction { p.remove() }.start()
+                    p.view.animate().alpha(0f).setDuration(120).withEndAction { p.remove() }.start()
                 }
             }
         }

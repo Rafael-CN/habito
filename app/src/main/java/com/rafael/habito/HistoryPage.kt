@@ -96,6 +96,19 @@ internal fun HistoriaPage(
     val pal = Tokens
     val years = remember(u.today, u.start) { yearsIn(u) }
     val options = listOf(0) + years
+    val fx = LocalFx.current
+    val reduceH = LocalReduceMotion.current
+    val enter = remember { androidx.compose.animation.core.Animatable(1f) }
+    LaunchedEffect(fx.flightAt) {
+        if (fx.flightAt != 0L && !reduceH) { enter.snapTo(0f); enter.animateTo(1f, androidx.compose.animation.core.tween(900, easing = androidx.compose.animation.core.LinearEasing)) }
+    }
+    fun Modifier.flightIn(i: Int): Modifier = graphicsLayer {
+        if (enter.value < 1f) {
+            val k = ((enter.value * 900f - 160f - i * 60f) / 420f).coerceIn(0f, 1f)
+            val e = 1f - (1f - k) * (1f - k) * (1f - k)
+            alpha = e; translationY = (1f - e) * 16.dp.toPx()
+        }
+    }
     Column(
         Modifier
             .fillMaxSize()
@@ -104,7 +117,7 @@ internal fun HistoriaPage(
             .padding(horizontal = Space.gutter)
             .padding(top = Space.s),
     ) {
-        Column(Modifier.entrance(0)) {
+        Column(Modifier.entrance(0).flightIn(0)) {
             Rule(index = 0)
             Spacer(Modifier.height(12.dp))
             Track(options.map { if (it == 0) "12 meses" else "$it" }, options.indexOf(period).coerceAtLeast(0), { onPeriod(options[it]) })
@@ -116,14 +129,14 @@ internal fun HistoriaPage(
             map()
         }
 
-        Column(Modifier.padding(top = Space.section).entrance(2)) {
+        Column(Modifier.padding(top = Space.section).entrance(2).flightIn(2)) {
             Rule(index = 2)
             SectionHead("Meses", "")
             Spacer(Modifier.height(4.dp))
             monthsIn(u, period).forEachIndexed { k, m -> MonthRow(u, m, k, onMonth) }
         }
 
-        Column(Modifier.padding(top = Space.section).entrance(3)) {
+        Column(Modifier.padding(top = Space.section).entrance(3).flightIn(3)) {
             Rule(index = 3)
             SectionHead("Ritmo", "últimas 12 semanas")
             Rhythm(u)
@@ -143,7 +156,7 @@ internal fun HistoriaPage(
             opened.forEach { LetterRow(it) }
         }
 
-        Column(Modifier.padding(top = Space.section).entrance(4)) {
+        Column(Modifier.padding(top = Space.section).entrance(4).flightIn(4)) {
             Rule(index = 4)
             SectionHead("Números", "desde ${u.start.format(SINCE)}")
             Row(Modifier.fillMaxWidth().padding(top = 18.dp)) {
@@ -162,7 +175,7 @@ internal fun HistoriaPage(
         }
 
         Row(Modifier.fillMaxWidth().padding(top = 40.dp, bottom = 80.dp)) {
-            Text("Hábito 4.8", style = Type.caption, color = pal.text3, modifier = Modifier.weight(1f))
+            Text("Hábito 4.8.1", style = Type.caption, color = pal.text3, modifier = Modifier.weight(1f))
             Text("um hábito, um quadrado por dia", style = Type.caption, color = pal.text3)
         }
     }
