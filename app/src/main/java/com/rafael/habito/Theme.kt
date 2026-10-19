@@ -1,5 +1,9 @@
 package com.rafael.habito
 
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
@@ -51,17 +55,54 @@ fun HabitTheme(palette: String = "verde", mode: Int = 0, paper: Boolean = false,
     val from = remember { mutableStateOf(target) }
     val swap = remember { Animatable(1f) }
     val lastName = remember { mutableStateOf(palette) }
+    // Tinta: com a folha de ajustes aberta, o quadro de antes fica guardado e a cor nova o atravessa num círculo.
+    val layer = rememberGraphicsLayer()
+    val recorded = remember { mutableStateOf(palette) }
+    val ink = remember { Animatable(1f) }
+    val inkFrom = remember { mutableStateOf<androidx.compose.ui.geometry.Offset?>(null) }
     LaunchedEffect(palette) {
         if (lastName.value == palette) return@LaunchedEffect
         lastName.value = palette
         from.value = shown.value
-        if (reduce) swap.snapTo(1f) else { swap.snapTo(0f); swap.animateTo(1f, tween(Motion.slow)) }
+        val origin = InkFx.origin
+        if (!reduce && origin != null && InkFx.armed) {
+            inkFrom.value = origin; InkFx.origin = null
+            swap.snapTo(1f)
+            ink.snapTo(0f); ink.animateTo(1f, tween(900, easing = androidx.compose.animation.core.CubicBezierEasing(0.5f, 0f, 0.15f, 1f)))
+            inkFrom.value = null
+        } else if (reduce) swap.snapTo(1f) else { swap.snapTo(0f); swap.animateTo(1f, tween(Motion.slow)) }
+        recorded.value = palette
     }
     val p = if (swap.value >= 1f) target else lerpPalette(from.value, target, swap.value)
     SideEffect { shown.value = p }
     val scheme = if (dark) darkColorScheme(primary = p.ink, background = p.bg, surface = p.bg, onSurface = p.ink, outline = p.line)
     else lightColorScheme(primary = p.ink, background = p.bg, surface = p.bg, onSurface = p.ink, outline = p.line)
-    CompositionLocalProvider(LocalPalette provides p) { MaterialTheme(colorScheme = scheme, typography = typography, content = content) }
+    CompositionLocalProvider(LocalPalette provides p) {
+        MaterialTheme(colorScheme = scheme, typography = typography) {
+            androidx.compose.foundation.layout.Box(
+                androidx.compose.ui.Modifier.drawWithContent {
+                    val changing = palette != recorded.value
+                    val o = inkFrom.value
+                    if (!changing && InkFx.armed) {
+                        // guarda o quadro (só com os ajustes abertos, onde a cor pode mudar)
+                        layer.record { this@drawWithContent.drawContent() }
+                        drawLayer(layer)
+                    } else if (changing && InkFx.armed && !reduce && (o != null || InkFx.origin != null)) {
+                        drawContent()
+                        val c = o ?: InkFx.origin ?: center
+                        val k = if (o == null) 0f else ink.value
+                        val r = InkFx.hypot0(c, size.width, size.height) * k
+                        val hole = androidx.compose.ui.graphics.Path().apply {
+                            addRect(androidx.compose.ui.geometry.Rect(androidx.compose.ui.geometry.Offset.Zero, size))
+                            addOval(androidx.compose.ui.geometry.Rect(c, r))
+                            fillType = androidx.compose.ui.graphics.PathFillType.EvenOdd
+                        }
+                        clipPath(hole) { drawLayer(layer) }
+                    } else drawContent()
+                },
+            ) { content() }
+        }
+    }
 }
 
 /** Qualquer texto do Material sem estilo próprio também sai em Archivo. */

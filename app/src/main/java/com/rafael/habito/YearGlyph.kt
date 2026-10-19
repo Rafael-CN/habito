@@ -70,7 +70,7 @@ private fun glyphPoints(g: Glyph, size: Float, n: Int): Pair<List<Offset>, Float
 private class Plan { var flyers: List<Flyer>? = null; var dot = 0f; var glyphSize = 0f; var center = Offset.Zero }
 
 @Composable
-fun YearGlyph(u: HabitUi, grid: Rect, marco: Int, onEnd: () -> Unit) {
+fun YearGlyph(u: HabitUi, grid: Rect, marco: Int, startDelay: Long = 560, onEnd: () -> Unit) {
     val pal = Tokens
     val view = LocalView.current
     val density = LocalDensity.current
@@ -80,7 +80,7 @@ fun YearGlyph(u: HabitUi, grid: Rect, marco: Int, onEnd: () -> Unit) {
     var release by remember { mutableLongStateOf(Long.MAX_VALUE) } // quando a volta começa (o toque adianta)
     val hold = 2900L
     LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(560) // primeiro o quadrado de hoje se enche
+        kotlinx.coroutines.delay(startDelay) // primeiro o quadrado de hoje se enche (e, com motion, o lançamento do marco)
         val start = withFrameMillis { it }
         var buzzed = false
         while (true) {

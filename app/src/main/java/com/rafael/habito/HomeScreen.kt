@@ -1,5 +1,7 @@
 package com.rafael.habito
 
+import androidx.compose.ui.graphics.asComposeRenderEffect
+import androidx.compose.runtime.SideEffect
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -147,6 +149,10 @@ fun HomeScreen(vm: HabitViewModel) {
     fun toast(msg: String) = Toast.makeText(ctx, msg, Toast.LENGTH_SHORT).show()
     fun buzz(kind: Int) { if (u?.state?.haptics != false) view.performHapticFeedback(kind) }
     fun sound(sfx: Sfx) { val st = u?.state ?: return; if (st.sounds) Sounds.play(ctx, st.palette, sfx) }
+    val fx = LocalFx.current
+    // Não fiz: a tela perde um pouco de cor e volta (Android 12+).
+    val desat = remember { Animatable(0f) }
+    LaunchedEffect(fx.naoFiz) { if (fx.naoFiz > 0 && !reduce) { desat.animateTo(1f, tween(380)); desat.animateTo(0f, tween(900)) } }
     fun tick() { buzz(HapticFeedbackConstants.CLOCK_TICK); sound(Sfx.TOQUE) }
 
     fun change(date: LocalDate, mark: Mark?) {
@@ -154,6 +160,16 @@ fun HomeScreen(vm: HabitViewModel) {
         val previous = cur.markOf(date)
         buzz(when (mark) { Mark.DONE -> HapticFeedbackConstants.CONFIRM; Mark.MISSED -> HapticFeedbackConstants.REJECT; null -> HapticFeedbackConstants.CLOCK_TICK })
         sound(when (mark) { Mark.DONE -> Sfx.FEITO; Mark.MISSED -> Sfx.NAO_FIZ; null -> Sfx.DESFAZER })
+        // Motion: só hoje ganha a cena inteira (número, régua com tiques, tela sem cor no não fiz).
+        if (date == cur.today && previous != mark && !reduce) {
+            if (mark == Mark.DONE) {
+                fx.feito++
+                if (cur.state.sounds) scope.launch {
+                    delay(LADDER_START)
+                    repeat(LADDER) { i -> Sounds.tick(ctx, cur.state.palette, i); delay(LADDER_STEP) }
+                }
+            } else if (mark == Mark.MISSED) fx.naoFiz++
+        }
         vm.setMark(date, mark)
         snackJob?.cancel()
         snackJob = scope.launch {
@@ -172,10 +188,17 @@ fun HomeScreen(vm: HabitViewModel) {
         val cur = u
         if (cur != null && cur.state.celebrate && streak != null && before != null && streak > before && isMilestone(streak, cur.weekly) && cur.todayMark == Mark.DONE) {
             ripple++
-            if (cur.state.haptics) Haptics.milestone(ctx)
             if (cur.state.sounds) Sounds.play(ctx, cur.state.palette, Sfx.MARCO)
-            // O ano vira o glifo: depois do quadrado de hoje se encher.
-            if (!reduce && pager.currentPage == 0) glyphMarco = streak // o glifo espera o quadrado de hoje se encher
+            if (!reduce && pager.currentPage == 0) {
+                // Lançamento: 1,25 s de swell (véu, brilho, o número tremendo), o impacto, e só então o ano vira o glifo.
+                fx.launchAt = uptime()
+                glyphMarco = streak
+                scope.launch {
+                    delay(LAUNCH_RISE)
+                    if (cur.state.haptics) Haptics.milestone(ctx)
+                    if (fx.number != Rect.Zero) fx.burst(fx.number.center, 46, 5.5f * view.resources.displayMetrics.density, listOf(pal.levels[3], pal.levels[4], pal.levels[2], pal.gold))
+                }
+            } else if (cur.state.haptics) Haptics.milestone(ctx)
         }
     }
 
@@ -293,6 +316,24 @@ fun HomeScreen(vm: HabitViewModel) {
 
     val goHistory: () -> Unit = {
         tick()
+        // O ano vira mapa: cada quadrado do mini ano voa até o seu dia no mapa da História.
+        val cur = u
+        val g = fx.miniGrid
+        if (cur != null && !reduce && g != Rect.Zero && pager.currentPage == 0) {
+            val weeks = 20
+            val gap = 3f * view.resources.displayMetrics.density
+            val cell = (g.width - gap * (weeks - 1)) / weeks
+            val first = cur.today.minusDays(((weeks - 1) * 7 + Cal.rowOf(cur.today)).toLong())
+            val list = ArrayList<FlightCell>()
+            for (col in 0 until weeks) for (row in 0 until 7) {
+                val d = first.plusDays((col * 7 + row).toLong())
+                if (d.isAfter(cur.today)) continue
+                val tl = Offset(g.left + col * (cell + gap), g.top + row * (cell + gap))
+                list += FlightCell(Rect(tl, Size(cell, cell)), d, pal.levels[cur.level(d)], col)
+            }
+            fx.flight = list; fx.flightAt = uptime()
+            sound(Sfx.PAGINA)
+        }
         scope.launch { pager.animateScrollToPage(1, animationSpec = if (reduce) tween(0) else spring(0.9f, 300f)) }
         scope.launch { histScroll.animateScrollTo(0) }
     }
@@ -304,6 +345,11 @@ fun HomeScreen(vm: HabitViewModel) {
                 val p = sheet.value
                 val s = 1f - 0.05f * p; scaleX = s; scaleY = s
                 transformOrigin = TransformOrigin(0.5f, 0f)
+                renderEffect = if (Build.VERSION.SDK_INT >= 31 && desat.value > 0.01f) {
+                    android.graphics.RenderEffect.createColorFilterEffect(
+                        android.graphics.ColorMatrixColorFilter(android.graphics.ColorMatrix().apply { setSaturation(1f - 0.65f * desat.value) }),
+                    ).asComposeRenderEffect()
+                } else null
             },
         ) {
             Tabs(
@@ -383,7 +429,7 @@ fun HomeScreen(vm: HabitViewModel) {
                         ) notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
                         vm.setReminders(list)
                     },
-                    onPalette = vm::setPalette, onTheme = vm::setTheme, onMonday = vm::setMondayFirst,
+                    onPalette = { p -> vm.setPalette(p); if (u.state.sounds) Sounds.play(ctx, p, Sfx.COR) }, onTheme = vm::setTheme, onMonday = vm::setMondayFirst,
                     onHaptics = vm::setHaptics, onCelebrate = vm::setCelebrate,
                     onSounds = { on -> vm.setSounds(on); if (on) Sounds.play(ctx, u.state.palette, Sfx.FEITO) }, onHour = vm::setHour,
                     onExport = { exporter.launch("habito-backup-${LocalDate.now()}.json") },
@@ -427,7 +473,19 @@ fun HomeScreen(vm: HabitViewModel) {
         }
 
         // Marco: o ano se solta do mapa e forma o glifo da cor (acima de tudo, até do aviso de desfazer).
-        glyphMarco?.let { m -> if (u != null) YearGlyph(u, gridRect, m) { glyphMarco = null } }
+        glyphMarco?.let { m -> if (u != null) YearGlyph(u, gridRect, m, startDelay = if (reduce) 560 else LAUNCH_RISE + 520) { glyphMarco = null } }
+
+        // Motion: partículas, o véu do marco e o voo do ano até o mapa, por cima de tudo.
+        FxLayer(fx, pal)
+        SideEffect { InkFx.armed = sheet.value > 0f }
+
+        // Abertura: o glifo da cor se desenha, encolhe e some enquanto a grade acende.
+        var showOpen by remember { mutableStateOf(!OpenOnce.done && !reduce) }
+        if (showOpen && LocalRevealed.current && u != null) OpeningGlyph(
+            pal,
+            onStart = { OpenOnce.done = true; fx.openAt = uptime(); if (u.state.sounds) Sounds.play(ctx, u.state.palette, Sfx.ABRIR) },
+            onEnd = { showOpen = false },
+        )
     }
 }
 

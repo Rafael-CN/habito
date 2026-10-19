@@ -1,5 +1,6 @@
 package com.rafael.habito
 
+import androidx.compose.runtime.rememberUpdatedState
 import android.Manifest
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
@@ -183,21 +184,64 @@ internal fun Hero(u: HabitUi, scroll: ScrollState, compact: Boolean = false, tim
     val density = LocalDensity.current
     val span = with(density) { 160.dp.toPx() }
     val reduce = LocalReduceMotion.current
+    val fx = LocalFx.current
+    // Feito: o número estica a largura e ganha peso ao virar, e volta numa mola.
+    val stretch = remember { Animatable(0f) }
+    LaunchedEffect(fx.feito) { if (fx.feito > 0 && !reduce) { stretch.animateTo(1f, tween(140, easing = FastOutSlowInEasing)); stretch.animateTo(0f, spring(0.42f, 260f)) } }
+    // Não fiz: solta o ar (perde peso e baixa um pouco) e volta devagar.
+    val deflate = remember { Animatable(0f) }
+    LaunchedEffect(fx.naoFiz) { if (fx.naoFiz > 0 && !reduce) { deflate.animateTo(1f, tween(420, easing = FastOutSlowInEasing)); deflate.animateTo(0f, tween(780, easing = FastOutSlowInEasing)) } }
+    // Abertura: entra largo e leve, assenta quando a grade termina de acender.
+    val open = remember { Animatable(0f) }
+    LaunchedEffect(fx.openAt) { if (fx.openAt > 0 && !reduce) { open.snapTo(1f); delay(620); open.animateTo(0f, spring(0.55f, 160f)) } }
+    // Marco: treme no swell, dá um soco no impacto e uma luz atravessa o número.
+    val lt = launchClock(fx)
+    val hitK = ((lt - LAUNCH_RISE) / 700f).coerceAtLeast(0f)
+    val punch = if (lt >= LAUNCH_RISE) 0.16f * kotlin.math.exp(-4f * hitK) * kotlin.math.cos(7f * hitK) else 0f
+    val hitStretch = if (lt >= LAUNCH_RISE) kotlin.math.exp(-3.5f * hitK) else 0f
+    val shake = if (lt > 0f && lt < LAUNCH_RISE) Math.pow((lt / LAUNCH_RISE).toDouble(), 2.2).toFloat() * 1.8f else 0f
+    val sheen = if (lt > LAUNCH_RISE + 120) ((lt - LAUNCH_RISE - 120) / 760f) else -1f
+    val scrollT = if (reduce) 0f else (scroll.value / span).coerceIn(0f, 1f)
+    val s1 = maxOf(stretch.value, hitStretch)
+    val width = 68f + 42f * s1 + 57f * open.value + 40f * scrollT - 4f * deflate.value
+    val weight = 650f + 170f * s1 - 350f * open.value - 260f * scrollT - 360f * deflate.value
+    val face = heroFace(width, weight)
     Row(Modifier.fillMaxWidth().padding(top = if (compact) 10.dp else 18.dp), verticalAlignment = Alignment.Bottom) {
         Box(
             Modifier.offset(x = (-4).dp).graphicsLayer {
-                val t = if (reduce) 0f else (scroll.value / span).coerceIn(0f, 1f)
-                val s = 1f - t * 0.42f
-                scaleX = s; scaleY = s
+                val t = scrollT
+                val s = (1f - t * 0.42f) * (1f + punch)
+                scaleX = s; scaleY = s * (1f - 0.06f * deflate.value)
                 translationY = -22.dp.toPx() * t
-                alpha = 1f - 0.85f * t
+                if (shake > 0f) {
+                    translationX = (kotlin.random.Random.nextFloat() - 0.5f) * shake.dp.toPx()
+                    translationY += (kotlin.random.Random.nextFloat() - 0.5f) * shake.dp.toPx()
+                }
+                alpha = (1f - 0.85f * t) * (1f - 0.6f * open.value)
                 transformOrigin = TransformOrigin(0f, 1f)
-            },
+            }.onGloballyPositioned { fx.number = it.boundsInRoot() },
         ) {
             val d = LocalDensity.current
             androidx.compose.runtime.CompositionLocalProvider(LocalDensity provides androidx.compose.ui.unit.Density(d.density, d.fontScale.coerceAtMost(1.15f))) {
-                Box(if (time != null) Modifier.materialFill(pal, { level }, { time.value }, petals) else Modifier) {
-                RollingNumber("${u.streak}", if (time != null) vessel(pal) else pal.ink, if (compact) Type.hero.copy(fontSize = 128.sp, lineHeight = 118.sp, letterSpacing = (-5.5).sp) else Type.hero)
+                Box(
+                    Modifier.graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }.drawWithContent {
+                        drawContent()
+                        if (sheen in 0f..1f) {
+                            val x = -size.width * 0.6f + sheen * size.width * 2.2f
+                            drawRect(
+                                androidx.compose.ui.graphics.Brush.linearGradient(
+                                    0f to Color.Transparent, 0.5f to Color.White.copy(alpha = 0.85f), 1f to Color.Transparent,
+                                    start = Offset(x, 0f), end = Offset(x + size.width * 0.45f, size.height * 0.25f),
+                                ),
+                                blendMode = androidx.compose.ui.graphics.BlendMode.SrcAtop,
+                            )
+                        }
+                    },
+                ) {
+                    Box(if (time != null) Modifier.materialFill(pal, { level }, { time.value }, petals) else Modifier) {
+                        val base = if (compact) Type.hero.copy(fontSize = 128.sp, lineHeight = 118.sp, letterSpacing = (-5.5).sp) else Type.hero
+                        RollingNumber("${u.streak}", if (time != null) vessel(pal) else pal.ink, base.copy(fontFamily = face))
+                    }
                 }
             }
         }
@@ -238,7 +282,7 @@ internal fun Gauge(u: HabitUi) {
         val done = u.doneThisWeek
         val left = u.goal - done
         GaugeRuler(
-            n = u.goal, target = minOf(done, u.goal).toFloat(), start = "0", end = "${u.goal}×",
+            n = u.goal, target = minOf(done, u.goal).toFloat(), start = "0", end = "${u.goal}×", pulse = LocalFx.current.feito,
             middle = if (left <= 0) "meta da semana cumprida" else if (left == 1) "falta 1 nesta semana" else "faltam $left nesta semana",
         )
         return
@@ -249,15 +293,28 @@ internal fun Gauge(u: HabitUi) {
     val n = minOf(span, 30)
     val left = next - streak
     GaugeRuler(
-        n = n, target = (streak - prev).toFloat() / span * n, start = "$prev", end = "$next",
+        n = n, target = (streak - prev).toFloat() / span * n, start = "$prev", end = "$next", pulse = LocalFx.current.feito,
         middle = "",
     )
 }
 
 @Composable
-internal fun GaugeRuler(n: Int, target: Float, start: String, end: String, middle: String) {
+internal fun GaugeRuler(n: Int, target: Float, start: String, end: String, middle: String, pulse: Int = 0) {
     val pal = Tokens
     val reduce = LocalReduceMotion.current
+    // Depois do feito, os últimos traços acesos pulam um a um, no ritmo dos tiques da régua (Sounds.tick).
+    val bump = remember(n) { List(n) { Animatable(0f) } }
+    val litNow by rememberUpdatedState(target.roundToInt())
+    LaunchedEffect(pulse) {
+        if (pulse == 0 || reduce) return@LaunchedEffect
+        delay(LADDER_START)
+        val k = minOf(LADDER, litNow)
+        for (j in 0 until k) {
+            val idx = (litNow - k + j).coerceIn(0, n - 1)
+            launch { bump[idx].snapTo(1f); bump[idx].animateTo(0f, tween(320, easing = FastOutSlowInEasing)) }
+            delay(LADDER_STEP)
+        }
+    }
     // Cada traço tem a própria mola: ao acender, cresce com um quique curto e ganha a cor, um depois do outro.
     val ticks = remember(n) { List(n) { Animatable(0f) } }
     val lit = target.roundToInt()
@@ -278,9 +335,10 @@ internal fun GaugeRuler(n: Int, target: Float, start: String, end: String, middl
             for (i in 0 until n) {
                 val on = ticks[i].value
                 val end = i == 0 || i == n - 1
-                val h = (if (end) 12.dp.toPx() else lerp(6.dp.toPx(), 10.dp.toPx(), on)).coerceAtLeast(1f)
+                val b = bump[i].value
+                val h = (if (end) 12.dp.toPx() else lerp(6.dp.toPx(), 10.dp.toPx(), on)).coerceAtLeast(1f) * (1f + 1.1f * b)
                 val off = pal.line.copy(alpha = if (end) 0.9f else Alpha.tick)
-                val c = androidx.compose.ui.graphics.lerp(off, pal.done, on.coerceIn(0f, 1f))
+                val c = androidx.compose.ui.graphics.lerp(androidx.compose.ui.graphics.lerp(off, pal.done, on.coerceIn(0f, 1f)), pal.levels[4], b)
                 drawRect(c, Offset(i * gap, size.height - h), Size(w, h))
             }
         }
@@ -468,15 +526,24 @@ internal fun WeekStrip(u: HabitUi, ripple: Int, onDay: (LocalDate) -> Unit) {
                 val breathe = if (call) callBreath() else 0f
                 // Hoje marcado: o quadrado se enche no gesto da cor (broto, flor, gota, maré…).
                 val gesture = remember { Animatable(1f) }
+                val ring = remember { Animatable(1f) }
                 val wasDone = remember { mutableStateOf(mark == Mark.DONE) }
                 val reduceMotion = LocalReduceMotion.current
+                val fx = LocalFx.current
+                val dens = LocalDensity.current.density
                 LaunchedEffect(isToday, mark) {
                     val was = wasDone.value
                     wasDone.value = mark == Mark.DONE
-                    if (isToday && mark == Mark.DONE && !was && !reduceMotion) { gesture.snapTo(0f); gesture.animateTo(1f, tween(if (pal.gesture == Gesture.TRACO) 700 else 620, easing = LinearEasing)) }
+                    if (isToday && mark == Mark.DONE && !was && !reduceMotion) {
+                        launch { ring.snapTo(0f); ring.animateTo(1f, tween(620, easing = FastOutSlowInEasing)) }
+                        val c = fx.todayCell
+                        if (c != androidx.compose.ui.geometry.Rect.Zero) fx.burst(c.center, 16, 2.6f * dens, listOf(pal.levels[3], pal.levels[4], pal.levels[2]))
+                        gesture.snapTo(0f); gesture.animateTo(1f, tween(if (pal.gesture == Gesture.TRACO) 700 else 620, easing = LinearEasing))
+                    }
                 }
                 Box(
                     Modifier.fillMaxWidth().aspectRatio(1f)
+                        .then(if (isToday) Modifier.onGloballyPositioned { fx.todayCell = it.boundsInRoot() } else Modifier)
                         .graphicsLayer { translationY = -4.dp.toPx() * lift.value; scaleX = scale; scaleY = scale }
                         .clickable(interactionSource = press, indication = null) { onDay(d) },
                 ) {
@@ -495,6 +562,16 @@ internal fun WeekStrip(u: HabitUi, ripple: Int, onDay: (LocalDate) -> Unit) {
                         }
                         // Marco: asterisco no canto, na cor do número.
                         if (d in u.milestones) star(ink, Offset(size.width - 10.dp.toPx(), size.height - 10.dp.toPx()), 12.dp.toPx(), glyph = pal.glyph)
+                        // Feito: um anel sai do quadrado e se dissipa.
+                        if (ring.value < 1f) {
+                            val k = ring.value
+                            val s = 0.85f + 1.25f * (1f - (1f - k) * (1f - k))
+                            val w = size.width * s; val h = size.height * s
+                            drawRoundRect(
+                                pal.levels[4].copy(alpha = 0.9f * (1f - k)), Offset((size.width - w) / 2, (size.height - h) / 2), Size(w, h),
+                                CornerRadius(r.x * s), style = Stroke((2.5f * (1f - k) + 0.5f).dp.toPx()),
+                            )
+                        }
                     }
                     Text("${d.dayOfMonth}", style = Type.caption.copy(lineHeight = 12.sp), color = ink, fontWeight = FontWeight.Medium, modifier = Modifier.padding(start = 6.dp, top = 5.dp))
                 }
@@ -579,6 +656,10 @@ internal fun MiniYear(u: HabitUi, onClick: () -> Unit, onGrid: (androidx.compose
     val pressed by press.collectIsPressedAsState()
     val scale by animateFloatAsState(if (pressed && !LocalReduceMotion.current) 0.985f else 1f, Motion.press, label = "mini")
     val nudge by animateFloatAsState(if (pressed && !LocalReduceMotion.current) 3f else 0f, Motion.press, label = "go")
+    val fx = LocalFx.current
+    val reduceM = LocalReduceMotion.current
+    val appear = remember { Animatable(1f) }
+    LaunchedEffect(fx.openAt) { if (fx.openAt > 0 && !reduceM) { appear.snapTo(0f); delay(520); appear.animateTo(1f, tween(900, easing = LinearEasing)) } }
     Panel(Modifier.scale(scale).clickable(press, indication = null, onClick = onClick)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Caps("Últimas 20 semanas", modifier = Modifier.weight(1f))
@@ -588,7 +669,7 @@ internal fun MiniYear(u: HabitUi, onClick: () -> Unit, onGrid: (androidx.compose
         }
         Spacer(Modifier.height(12.dp))
         val first = u.today.minusDays(((weeks - 1) * 7 + Cal.rowOf(u.today)).toLong())
-        Canvas(Modifier.fillMaxWidth().aspectRatio(weeks / 7f).onGloballyPositioned { onGrid(it.boundsInRoot()) }) {
+        Canvas(Modifier.fillMaxWidth().aspectRatio(weeks / 7f).onGloballyPositioned { onGrid(it.boundsInRoot()); fx.miniGrid = it.boundsInRoot() }) {
             val gap = 3.dp.toPx()
             val cell = (size.width - gap * (weeks - 1)) / weeks
             val r = CornerRadius(Radius.cell.toPx())
@@ -597,12 +678,18 @@ internal fun MiniYear(u: HabitUi, onClick: () -> Unit, onGrid: (androidx.compose
                 if (d.isAfter(u.today)) continue
                 val tl = Offset(col * (cell + gap), row * (cell + gap))
                 val mark = u.markOf(d)
+                // abertura: cada quadrado aparece com uma mola curta, em diagonal a partir do canto de cima
+                val k = if (appear.value >= 1f) 1f else ((appear.value * 900f - 30f - (col + row) * 18f) / 300f).coerceIn(0f, 1f)
+                if (k <= 0f) continue
+                val sc = if (k >= 1f) 1f else 0.2f + 0.8f * (1f + 2.70158f * (k - 1f) * (k - 1f) * (k - 1f) + 1.70158f * (k - 1f) * (k - 1f))
+                if (sc != 1f) drawContext.transform.scale(sc, sc, tl + Offset(cell / 2, cell / 2))
                 habitCell(
                     pal, tl, cell, r.x, pal.levels[u.level(d)], mark, isToday = d == u.today, selected = false,
                     milestone = d in u.milestones, trope = d in u.state.tropes, call = d == u.today && u.state.pendingTrope,
                 )
                 if (d in u.state.scars) stitch(pal, tl, cell, cell, gap)
                 else if (mark == null && u.state.isRest(d) && d != u.today) restDash(pal, tl, cell)
+                if (sc != 1f) drawContext.transform.scale(1f / sc, 1f / sc, tl + Offset(cell / 2, cell / 2))
             }
         }
     }
@@ -626,3 +713,7 @@ internal fun DrawScope.restDash(pal: Palette, tl: Offset, cell: Float) {
     val h = 1.5.dp.toPx()
     drawRect(pal.text3.copy(alpha = 0.7f), tl + Offset(cell * 0.25f, cell / 2 - h / 2), Size(cell * 0.5f, h))
 }
+
+
+/** Quantos traços sobem na escada da régua depois do feito (e quantos tiques tocam). */
+internal const val LADDER = 7

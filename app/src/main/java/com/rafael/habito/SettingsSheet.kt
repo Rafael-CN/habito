@@ -1,5 +1,7 @@
 package com.rafael.habito
 
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -281,7 +283,7 @@ internal fun SettingsContent(s: HabitState, unrestricted: Boolean, lastBackup: L
             Text("Fonte Archivo (SIL Open Font License)", style = Type.caption, color = pal.text3, modifier = Modifier.padding(top = 10.dp, bottom = 4.dp))
         }
         Text(
-            "Hábito 4.7.1 · seus dados ficam só neste aparelho",
+            "Hábito 4.8 · seus dados ficam só neste aparelho",
             style = Type.caption, color = pal.text3, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             modifier = Modifier.fillMaxWidth().padding(top = 22.dp, bottom = 8.dp),
         )
@@ -609,10 +611,12 @@ private fun Swatches(selected: String, onSelect: (String) -> Unit) {
             val pressed by press.collectIsPressedAsState()
             val scale by animateFloatAsState(if (pressed && !LocalReduceMotion.current) 0.92f else 1f, Motion.press, label = "swS")
             Canvas(
-                Modifier.weight(1f).aspectRatio(1f).scale(scale).clip(RoundedCornerShape(Radius.control)).background(pal.surface)
+                Modifier.weight(1f).aspectRatio(1f)
+                    .onGloballyPositioned { InkFx.centers[name] = it.boundsInRoot().center }
+                    .scale(scale).clip(RoundedCornerShape(Radius.control)).background(pal.surface)
                     .border(2.dp, ring, RoundedCornerShape(Radius.control))
                     .semantics { role = Role.RadioButton; stateDescription = name }
-                    .clickable(press, indication = null) { onSelect(name) },
+                    .clickable(press, indication = null) { if (name != selected) InkFx.origin = InkFx.centers[name]; onSelect(name) },
             ) {
                 val pad = 5.dp.toPx(); val g = 2.dp.toPx()
                 val w = (size.width - 2 * pad - g) / 2

@@ -1,5 +1,7 @@
 package com.rafael.habito
 
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -340,9 +342,17 @@ fun YearHeatmap(
                     }
                 }
                 // Camada 1: grade estática em cache; na abertura só a máscara por cima é refeita.
+                val fx = LocalFx.current
+                val dens = LocalDensity.current
                 Box(
                     Modifier
                         .size(gridW, gridH)
+                        .onGloballyPositioned {
+                            with(dens) {
+                                fx.heatOrigin = it.positionInRoot() + Offset(0f, MONTH_H.toPx())
+                                fx.heatStep = STEP.toPx(); fx.heatCell = CELL.toPx(); fx.heatStart = start
+                            }
+                        }
                         .graphicsLayer { compositingStrategy = if (reveal.value < 1f) CompositingStrategy.Offscreen else CompositingStrategy.Auto }
                         .drawWithContent {
                             drawContent()

@@ -1,5 +1,6 @@
 package com.rafael.habito
 
+import androidx.compose.runtime.remember
 import android.appwidget.AppWidgetManager
 import android.content.Intent
 import android.os.Bundle
@@ -87,7 +88,8 @@ class MainActivity : ComponentActivity() {
                 enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
                 onDispose { }
             }
-            CompositionLocalProvider(LocalRevealed provides revealed.value, LocalReduceMotion provides reduceMotion.value) {
+            val fx = remember { FxState() }
+            CompositionLocalProvider(LocalRevealed provides revealed.value, LocalReduceMotion provides reduceMotion.value, LocalFx provides fx) {
                 HabitTheme(ui?.state?.palette ?: "verde", mode, ui?.state?.paper ?: false) { HomeScreen(vm) }
             }
         }
