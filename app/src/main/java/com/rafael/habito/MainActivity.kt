@@ -30,6 +30,17 @@ class MainActivity : ComponentActivity() {
 
     private fun animationsOff() = Settings.Global.getFloat(contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
 
+    /**
+     * O ícone só troca com o app fora de cena: desligar o alias pelo qual o app foi aberto, com ele na tela,
+     * faz a One UI fechar a tela (parece um crash) e às vezes tira o atalho da tela inicial.
+     */
+    override fun onStop() {
+        super.onStop()
+        if (isChangingConfigurations) return
+        val app = applicationContext
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch { runCatching { IconSwitcher.apply(app, HabitStore.load(app)) } }
+    }
+
     override fun onResume() {
         super.onResume()
         reduceMotion.value = animationsOff() // "remover animações" zera a escala de animação do sistema

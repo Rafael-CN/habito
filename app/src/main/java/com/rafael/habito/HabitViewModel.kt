@@ -85,9 +85,9 @@ class HabitViewModel(app: Application) : AndroidViewModel(app) {
     fun setWeeks(weeks: Int) = save { HabitStore.setWeeks(ctx, weeks) }
     fun setReminders(list: List<Rem>) = save { HabitStore.setReminders(ctx, list); Reminder.schedule(ctx, HabitStore.load(ctx)) }
     fun setRest(days: Set<Int>) = save { HabitStore.setRest(ctx, days) }
-    fun setPalette(name: String) = save { HabitStore.setPalette(ctx, name); IconSwitcher.apply(ctx, HabitStore.load(ctx)) }
+    fun setPalette(name: String) = save { HabitStore.setPalette(ctx, name) } // o ícone troca quando o app sai de cena (MainActivity.onStop)
     fun setPaper(on: Boolean) = save { HabitStore.setPaper(ctx, on) }
-    fun setIconFollows(on: Boolean) = save { HabitStore.setIconFollows(ctx, on); IconSwitcher.apply(ctx, HabitStore.load(ctx)) }
+    fun setIconFollows(on: Boolean) = save { HabitStore.setIconFollows(ctx, on) }
     fun setTheme(mode: Int) = save { HabitStore.setTheme(ctx, mode) }
     fun setMondayFirst(on: Boolean) = save { HabitStore.setMondayFirst(ctx, on) }
     fun setHaptics(on: Boolean) = save { HabitStore.setHaptics(ctx, on) }

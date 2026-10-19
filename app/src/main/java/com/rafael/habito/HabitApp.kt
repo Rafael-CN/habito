@@ -15,7 +15,6 @@ class HabitApp : Application() {
             Rollover.schedule(this@HabitApp, s.rolloverHour)
             Reminder.schedule(this@HabitApp, s)
             AutoBackup.schedule(this@HabitApp, s)
-            runCatching { IconSwitcher.apply(this@HabitApp, s) }
         }
         CrashLog.install(this)
     }

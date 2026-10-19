@@ -11,7 +11,8 @@ enum class Sfx { FEITO, DESFAZER, NAO_FIZ, MARCO, TOQUE }
 
 /**
  * Os sons de cada cor (design/sons/v2): um instrumento e uma tonalidade por cor, três variações por evento.
- * Só a cor escolhida fica carregada. Desligado por padrão; o modo silencioso e o vibrar do aparelho calam tudo.
+ * Só a cor escolhida fica carregada. Desligado por padrão. Tocam no volume de mídia (o de sistema costuma estar
+ * baixo ou zerado na One UI), e o modo silencioso do aparelho cala tudo.
  */
 object Sounds {
     private val pool: SoundPool by lazy {
@@ -19,7 +20,7 @@ object Sounds {
             .setMaxStreams(4)
             .setAudioAttributes(
                 AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                    .setUsage(AudioAttributes.USAGE_GAME)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                     .build(),
             )
@@ -47,7 +48,7 @@ object Sounds {
     /** Toca o evento numa variação diferente da última. */
     @Synchronized fun play(ctx: Context, palette: String, sfx: Sfx) {
         val am = ctx.getSystemService(AudioManager::class.java)
-        if (am.ringerMode != AudioManager.RINGER_MODE_NORMAL) return
+        if (am.ringerMode == AudioManager.RINGER_MODE_SILENT) return
         prepare(ctx, palette)
         val row = ids.getOrNull(sfx.ordinal) ?: return
         var v = Random.nextInt(row.size)
