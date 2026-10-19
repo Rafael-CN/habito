@@ -83,7 +83,7 @@ private val PRESETS = listOf("manhã" to 7 * 60, "almoço" to 12 * 60 + 30, "tar
 class SettingsActions(
     val onName: (String) -> Unit, val onGoal: (Int) -> Unit, val onRest: (Set<Int>) -> Unit,
     val onReminders: (List<Rem>) -> Unit, val onPalette: (String) -> Unit, val onTheme: (Int) -> Unit,
-    val onMonday: (Boolean) -> Unit, val onHaptics: (Boolean) -> Unit, val onCelebrate: (Boolean) -> Unit,
+    val onMonday: (Boolean) -> Unit, val onHaptics: (Boolean) -> Unit, val onCelebrate: (Boolean) -> Unit, val onSounds: (Boolean) -> Unit,
     val onHour: (Int) -> Unit, val onExport: () -> Unit, val onImport: () -> Unit, val onBattery: () -> Unit,
     val onAddWidget: (Boolean) -> Unit,
     val onSeal: (Int, String) -> Unit, val onUnseal: () -> Unit,
@@ -214,6 +214,7 @@ internal fun SettingsContent(s: HabitState, unrestricted: Boolean, lastBackup: L
         // 3 · sensações
         Group("Sensações")
         SwitchRow("Vibrar ao marcar", "Um toque firme no feito, leve no não fiz.", s.haptics) { a.onHaptics(it) }
+        SwitchRow("Sons", "Cada cor toca o seu instrumento.", s.sounds) { a.onSounds(it) }
         SwitchRow("Comemorar marcos", "7, 30, 100 e 365 dias acendem a sequência.", s.celebrate) { a.tick(); a.onCelebrate(it) }
 
         // 4 · histórico: a cópia automática, sempre à vista
@@ -279,7 +280,7 @@ internal fun SettingsContent(s: HabitState, unrestricted: Boolean, lastBackup: L
             }
         }
         Text(
-            "Hábito 4.5 · fonte Archivo (OFL) · seus dados ficam só neste aparelho",
+            "Hábito 4.6 · fonte Archivo (OFL) · seus dados ficam só neste aparelho",
             style = Type.caption, color = pal.text3, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             modifier = Modifier.fillMaxWidth().padding(top = 22.dp, bottom = 8.dp),
         )

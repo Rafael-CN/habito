@@ -146,18 +146,20 @@ fun HomeScreen(vm: HabitViewModel) {
 
     fun toast(msg: String) = Toast.makeText(ctx, msg, Toast.LENGTH_SHORT).show()
     fun buzz(kind: Int) { if (u?.state?.haptics != false) view.performHapticFeedback(kind) }
-    fun tick() = buzz(HapticFeedbackConstants.CLOCK_TICK)
+    fun sound(sfx: Sfx) { val st = u?.state ?: return; if (st.sounds) Sounds.play(ctx, st.palette, sfx) }
+    fun tick() { buzz(HapticFeedbackConstants.CLOCK_TICK); sound(Sfx.TOQUE) }
 
     fun change(date: LocalDate, mark: Mark?) {
         val cur = u ?: return
         val previous = cur.markOf(date)
         buzz(when (mark) { Mark.DONE -> HapticFeedbackConstants.CONFIRM; Mark.MISSED -> HapticFeedbackConstants.REJECT; null -> HapticFeedbackConstants.CLOCK_TICK })
+        sound(when (mark) { Mark.DONE -> Sfx.FEITO; Mark.MISSED -> Sfx.NAO_FIZ; null -> Sfx.DESFAZER })
         vm.setMark(date, mark)
         snackJob?.cancel()
         snackJob = scope.launch {
             snackbar.currentSnackbarData?.dismiss()
             val r = snackbar.showSnackbar(describe(date, cur.today, mark), actionLabel = "Desfazer", duration = SnackbarDuration.Short)
-            if (r == SnackbarResult.ActionPerformed) { tick(); vm.setMark(date, previous) }
+            if (r == SnackbarResult.ActionPerformed) { buzz(HapticFeedbackConstants.CLOCK_TICK); sound(Sfx.DESFAZER); vm.setMark(date, previous) }
         }
     }
 
@@ -171,10 +173,15 @@ fun HomeScreen(vm: HabitViewModel) {
         if (cur != null && cur.state.celebrate && streak != null && before != null && streak > before && isMilestone(streak, cur.weekly) && cur.todayMark == Mark.DONE) {
             ripple++
             if (cur.state.haptics) Haptics.milestone(ctx)
+            if (cur.state.sounds) Sounds.play(ctx, cur.state.palette, Sfx.MARCO)
             // O ano vira o glifo: depois do quadrado de hoje se encher.
             if (!reduce && pager.currentPage == 0) glyphMarco = streak // o glifo espera o quadrado de hoje se encher
         }
     }
+
+    // Com "Sons" ligado, os sons da cor ficam carregados antes do primeiro toque.
+    val soundPalette = u?.state?.let { if (it.sounds) it.palette else null }
+    LaunchedEffect(soundPalette) { if (soundPalette != null) Sounds.prepare(ctx, soundPalette) }
 
     val selectedMark = selected?.let { u?.markOf(it) }
     LaunchedEffect(selected, selectedMark) { if (selected != null) { delay(3600); selected = null } }
@@ -365,7 +372,8 @@ fun HomeScreen(vm: HabitViewModel) {
                         vm.setReminders(list)
                     },
                     onPalette = vm::setPalette, onTheme = vm::setTheme, onMonday = vm::setMondayFirst,
-                    onHaptics = vm::setHaptics, onCelebrate = vm::setCelebrate, onHour = vm::setHour,
+                    onHaptics = vm::setHaptics, onCelebrate = vm::setCelebrate,
+                    onSounds = { on -> vm.setSounds(on); if (on) Sounds.play(ctx, u.state.palette, Sfx.FEITO) }, onHour = vm::setHour,
                     onExport = { exporter.launch("habito-backup-${LocalDate.now()}.json") },
                     onImport = { importer.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) },
                     onBattery = { ctx.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", ctx.packageName, null))) },

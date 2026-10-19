@@ -92,6 +92,7 @@ class HabitViewModel(app: Application) : AndroidViewModel(app) {
     fun setMondayFirst(on: Boolean) = save { HabitStore.setMondayFirst(ctx, on) }
     fun setHaptics(on: Boolean) = save { HabitStore.setHaptics(ctx, on) }
     fun setCelebrate(on: Boolean) = save { HabitStore.setCelebrate(ctx, on) }
+    fun setSounds(on: Boolean) = save { HabitStore.setSounds(ctx, on) }
     fun setGoal(goal: Int) = save { HabitStore.setGoal(ctx, goal) }
     fun setRetroSeen(month: java.time.YearMonth) = viewModelScope.launch { HabitStore.setRetroSeen(ctx, month.toString()) }
 

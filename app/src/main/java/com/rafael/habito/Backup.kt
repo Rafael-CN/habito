@@ -31,6 +31,7 @@ object Backup {
             .put("mondayFirst", s.mondayFirst)
             .put("haptics", s.haptics)
             .put("celebrate", s.celebrate)
+            .put("sounds", s.sounds)
             .put("paper", s.paper)
             .put("letters", Letter.encode(s.letters))
             .put("done", JSONArray(s.done.sorted().map(LocalDate::toString)))
@@ -68,6 +69,7 @@ object Backup {
             mondayFirst = json.optBoolean("mondayFirst", false),
             haptics = json.optBoolean("haptics", true),
             celebrate = json.optBoolean("celebrate", true),
+            sounds = json.optBoolean("sounds", false),
             paper = json.optBoolean("paper", false),
             letters = Letter.decode(json.optString("letters", "")),
         )

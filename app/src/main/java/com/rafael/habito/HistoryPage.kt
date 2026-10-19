@@ -162,7 +162,7 @@ internal fun HistoriaPage(
         }
 
         Row(Modifier.fillMaxWidth().padding(top = 40.dp, bottom = 80.dp)) {
-            Text("Hábito 4.5", style = Type.caption, color = pal.text3, modifier = Modifier.weight(1f))
+            Text("Hábito 4.6", style = Type.caption, color = pal.text3, modifier = Modifier.weight(1f))
             Text("um hábito, um quadrado por dia", style = Type.caption, color = pal.text3)
         }
     }

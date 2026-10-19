@@ -78,6 +78,7 @@ data class HabitState(
     val mondayFirst: Boolean = false,         // a semana começa na segunda
     val haptics: Boolean = true,
     val celebrate: Boolean = true,
+    val sounds: Boolean = false,              // sons ao marcar (desligado por padrão)
     val widgets: Map<Int, WidgetOpts> = emptyMap(), // por appWidgetId
     val letters: List<Letter> = emptyList(),  // frases do dia 1 (lacradas até o marco)
     val letterAsked: Boolean = false,         // a pergunta do dia 1 já apareceu
@@ -315,6 +316,7 @@ object HabitStore {
     private val MONDAY = androidx.datastore.preferences.core.booleanPreferencesKey("monday_first")
     private val HAPTICS = androidx.datastore.preferences.core.booleanPreferencesKey("haptics")
     private val CELEBRATE = androidx.datastore.preferences.core.booleanPreferencesKey("celebrate")
+    private val SOUNDS = androidx.datastore.preferences.core.booleanPreferencesKey("sounds")
     private val LETTERS = stringPreferencesKey("letters")
     private val LETTER_ASKED = androidx.datastore.preferences.core.booleanPreferencesKey("letter_asked")
     private val BACKUP_FREQ = intPreferencesKey("backup_freq")
@@ -363,6 +365,7 @@ object HabitStore {
         mondayFirst = this[MONDAY] ?: false,
         haptics = this[HAPTICS] ?: true,
         celebrate = this[CELEBRATE] ?: true,
+        sounds = this[SOUNDS] ?: false,
         widgets = asMap().entries.filter { it.key.name.startsWith("w_") }.mapNotNull { e -> e.key.name.removePrefix("w_").toIntOrNull()?.let { it to WidgetOpts.decode(e.value as? String) } }.toMap(),
         letters = Letter.decode(this[LETTERS]),
         letterAsked = this[LETTER_ASKED] ?: false,
@@ -397,6 +400,7 @@ object HabitStore {
     suspend fun setMondayFirst(ctx: Context, on: Boolean) = ctx.store.edit { it[MONDAY] = on }
     suspend fun setHaptics(ctx: Context, on: Boolean) = ctx.store.edit { it[HAPTICS] = on }
     suspend fun setCelebrate(ctx: Context, on: Boolean) = ctx.store.edit { it[CELEBRATE] = on }
+    suspend fun setSounds(ctx: Context, on: Boolean) = ctx.store.edit { it[SOUNDS] = on }
     suspend fun setWidget(ctx: Context, id: Int, o: WidgetOpts) = ctx.store.edit { it[stringPreferencesKey("w_$id")] = o.encode() }
     suspend fun removeWidget(ctx: Context, id: Int) = ctx.store.edit { it.remove(stringPreferencesKey("w_$id")) }
 
@@ -458,6 +462,7 @@ object HabitStore {
             p[MONDAY] = s.mondayFirst
             p[HAPTICS] = s.haptics
             p[CELEBRATE] = s.celebrate
+            p[SOUNDS] = s.sounds
             p[PAPER] = s.paper
             p[LETTERS] = Letter.encode(s.letters)
             if (s.letters.isNotEmpty()) p[LETTER_ASKED] = true
