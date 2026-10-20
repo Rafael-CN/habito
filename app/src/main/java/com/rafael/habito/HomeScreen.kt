@@ -301,6 +301,7 @@ fun HomeScreen(vm: HabitViewModel) {
     // ---------- folha de ajustes
     var sheetOpen by rememberSaveable { mutableStateOf(false) }
     val sheet = remember { Animatable(0f) } // 0 = fechada, 1 = aberta
+    val sheetShown by remember { androidx.compose.runtime.derivedStateOf { sheet.value > 0f } }
     var sheetDrag by remember { mutableFloatStateOf(0f) }
     LaunchedEffect(sheetOpen) {
         if (reduce) sheet.snapTo(if (sheetOpen) 1f else 0f) else sheet.animateTo(if (sheetOpen) 1f else 0f, tween(if (sheetOpen) 560 else 420, easing = SHEET))
@@ -372,9 +373,10 @@ fun HomeScreen(vm: HabitViewModel) {
                 onGear = { tick(); sheetOpen = !sheetOpen },
             )
             Box(Modifier.fillMaxSize()) {
+                val hojeActive = pager.currentPage == 0 && !sheetOpen && month == null && retro == null
                 HorizontalPager(pager, Modifier.fillMaxSize(), beyondViewportPageCount = 1) { p ->
                     if (u == null) return@HorizontalPager
-                    if (p == 0) HojePage(
+                    if (p == 0) androidx.compose.runtime.CompositionLocalProvider(LocalHojeActive provides hojeActive) { HojePage(
                         u, ripple, hojeScroll,
                         onDone = { change(u.today, if (u.todayMark == Mark.DONE) null else Mark.DONE) },
                         onSkip = { change(u.today, if (u.todayMark == Mark.MISSED) null else Mark.MISSED) },
@@ -393,7 +395,7 @@ fun HomeScreen(vm: HabitViewModel) {
                                 )
                             }
                         },
-                    ) else HistoriaPage(
+                    ) } else HistoriaPage(
                         u, histScroll, period, onPeriod = { tick(); period = it },
                         map = {
                             YearPanel(u, selected, annoBack, ripple, period, onRect = { yearRect = it }, onShare = { share("ano") },
@@ -409,25 +411,25 @@ fun HomeScreen(vm: HabitViewModel) {
         }
 
         // Escurecimento da folha.
-        if (sheet.value > 0f) Box(
+        if (sheetShown) Box(
             Modifier.fillMaxSize().graphicsLayer { alpha = 0.32f * sheet.value * (1f - sheetDrag) }.background(Color.Black)
                 .clickable(remember { MutableInteractionSource() }, null) { sheetOpen = false },
         )
 
         val m = shownMonth
-        if (m != null && u != null) ClipOverlay(monthFrom, monthReveal.value) {
+        if (m != null && u != null) ClipOverlay(monthFrom, { monthReveal.value }) {
             MonthScreen(
                 u, m, monthBack, closing = month == null, onMonth = { month = it }, onClose = { month = null },
                 onDay = { d -> change(d, Cal.next(u.markOf(d))) }, onRetro = { tick(); retroFrom = Rect.Zero; retro = it },
             )
         }
         val r = shownRetro
-        if (r != null && u != null) ClipOverlay(retroFrom, retroReveal.value) {
+        if (r != null && u != null) ClipOverlay(retroFrom, { retroReveal.value }) {
             RetroScreen(u, r, retroBack, onClose = { tick(); closeRetro() }, onShare = { share("mes") })
         }
 
-        if (sheet.value > 0f && u != null) SettingsHost(
-            progress = sheet.value, drag = sheetDrag, onDrag = { sheetDrag = it }, onRelease = { fast -> if (sheetDrag > 0.28f || fast) sheetOpen = false else sheetDrag = 0f },
+        if (sheetShown && u != null) SettingsHost(
+            progress = { sheet.value }, drag = sheetDrag, onDrag = { sheetDrag = it }, onRelease = { fast -> if (sheetDrag > 0.28f || fast) sheetOpen = false else sheetDrag = 0f },
             onClose = { tick(); sheetOpen = false },
         ) {
             SettingsContent(
@@ -488,7 +490,7 @@ fun HomeScreen(vm: HabitViewModel) {
 
         // Motion: partículas, o véu do marco e o voo do ano até o mapa, por cima de tudo.
         FxLayer(fx, pal)
-        SideEffect { InkFx.armed = sheet.value > 0f }
+        SideEffect { InkFx.armed = sheetShown }
 
         // Abertura: o glifo da cor se desenha, encolhe e some enquanto a grade acende.
         var showOpen by remember { mutableStateOf(!OpenOnce.done && !reduce) }
@@ -580,10 +582,11 @@ private suspend fun <T> reveal(target: T?, shown: T?, anim: Animatable<Float, *>
 
 /** O retângulo de origem cresce até a tela: mesma cor e mesmos cantos do bloco no início, o fundo no fim. */
 @Composable
-private fun ClipOverlay(from: Rect, t: Float, content: @Composable () -> Unit) {
+private fun ClipOverlay(from: Rect, progress: () -> Float, content: @Composable () -> Unit) {
     val pal = Tokens
     Box(
         Modifier.fillMaxSize().drawWithContent {
+            val t = progress()
             val o = if (from == Rect.Zero) Rect(size.width * 0.1f, size.height * 0.45f, size.width * 0.9f, size.height * 0.55f) else from
             val r = Rect(lerp(o.left, 0f, t), lerp(o.top, 0f, t), lerp(o.right, size.width, t), lerp(o.bottom, size.height, t))
             val path = Path().apply { addRoundRect(RoundRect(r, CornerRadius(lerp(Radius.panel.toPx(), 0f, t)))) }
@@ -707,7 +710,7 @@ private fun YearPanel(
  */
 @Composable
 private fun SettingsHost(
-    progress: Float, drag: Float, onDrag: (Float) -> Unit, onRelease: (Boolean) -> Unit, onClose: () -> Unit,
+    progress: () -> Float, drag: Float, onDrag: (Float) -> Unit, onRelease: (Boolean) -> Unit, onClose: () -> Unit,
     content: @Composable () -> Unit,
 ) {
     val pal = Tokens
@@ -722,7 +725,7 @@ private fun SettingsHost(
                 .onGloballyPositioned { height = it.size.height.toFloat().coerceAtLeast(1f) }
                 .layout { m, c ->
                     val p = m.measure(c)
-                    layout(p.width, p.height) { p.place(0, ((1f - progress) * p.height * 1.05f + drag * p.height).roundToInt()) }
+                    layout(p.width, p.height) { p.place(0, ((1f - progress()) * p.height * 1.05f + drag * p.height).roundToInt()) }
                 }
                 .clip(RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp))
                 .background(pal.bg)

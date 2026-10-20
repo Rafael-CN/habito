@@ -103,7 +103,7 @@ class FlightCell(val from: Rect, val date: LocalDate, val color: Color, val col:
 val LocalFx = staticCompositionLocalOf { FxState() }
 
 /** O número grande com largura (wdth) e peso (wght) quaisquer; quantizado e em cache para não criar fonte por quadro. */
-private val heroFaces = HashMap<Int, FontFamily>()
+private val heroFaces = java.util.concurrent.ConcurrentHashMap<Int, FontFamily>()
 
 @OptIn(ExperimentalTextApi::class)
 fun heroFace(width: Float, weight: Float): FontFamily {

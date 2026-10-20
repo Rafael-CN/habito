@@ -216,7 +216,9 @@ internal fun Hero(u: HabitUi, scroll: ScrollState, compact: Boolean = false, tim
     val shakeX = shakeAmp * kotlin.math.sin(lt / 1000f * 2f * Math.PI.toFloat() * 13f)
     val shakeY = shakeAmp * kotlin.math.sin(lt / 1000f * 2f * Math.PI.toFloat() * 19f + 1.3f)
     val sheen = if (lt > LAUNCH_RISE + 400) ((lt - LAUNCH_RISE - 400) / 700f) else -1f
-    val scrollT = if (reduce) 0f else (scroll.value / span).coerceIn(0f, 1f)
+    // a fonte muda em degraus (24 por toda a rolagem): o Hero não recompõe a cada pixel; escala e posição são lidas no desenho
+    val scrollStep by remember(reduce) { androidx.compose.runtime.derivedStateOf { if (reduce) 0 else ((scroll.value / span).coerceIn(0f, 1f) * 24f).toInt() } }
+    val scrollT = scrollStep / 24f
     val s1 = stretch.value
     val width = 68f + 34f * s1 + 57f * open.value + 40f * scrollT - 4f * deflate.value
     val weight = 650f + 120f * s1 - 350f * open.value - 260f * scrollT - 360f * deflate.value
@@ -238,10 +240,11 @@ internal fun Hero(u: HabitUi, scroll: ScrollState, compact: Boolean = false, tim
     val tilt = remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
     val gravity = remember { floatArrayOf(0f) }
     val kick = remember { floatArrayOf(0f) }
-    if (!reduce && time != null) {
+    val active = LocalHojeActive.current
+    if (!reduce && time != null && active) {
         androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
             val sm = ctx.getSystemService(android.hardware.SensorManager::class.java)
-            val sensor = sm?.getDefaultSensor(android.hardware.Sensor.TYPE_GRAVITY) ?: sm?.getDefaultSensor(android.hardware.Sensor.TYPE_ACCELEROMETER)
+            val sensor = sm?.getDefaultSensor(android.hardware.Sensor.TYPE_ACCELEROMETER)
             val l = object : android.hardware.SensorEventListener {
                 override fun onSensorChanged(e: android.hardware.SensorEvent) {
                     val deg = Math.toDegrees(kotlin.math.atan2(e.values[0].toDouble(), e.values[1].toDouble().coerceAtLeast(0.5))).toFloat()
@@ -257,12 +260,16 @@ internal fun Hero(u: HabitUi, scroll: ScrollState, compact: Boolean = false, tim
             var a = 0f; var v = 0f; var lastScroll = scroll.value.toFloat(); var lastVel = 0f
             var last = withFrameNanos { it }
             while (true) {
+                // assentado (sem movimento, sem chute, sem rolagem): dorme e confere 10× por segundo
+                if (kotlin.math.abs(v) < 0.01f && kotlin.math.abs(a - gravity[0]) < 0.05f && kotlin.math.abs(kick[0]) < 0.01f && scroll.value.toFloat() == lastScroll) {
+                    delay(100); last = withFrameNanos { it }; continue
+                }
                 withFrameNanos { now ->
                     val dt = ((now - last) / 1e9f).coerceIn(0.001f, 0.05f); last = now
                     val sv = (scroll.value - lastScroll) / dt; lastScroll = scroll.value.toFloat()
                     val acc = (sv - lastVel); lastVel = sv
-                    v += (-(a - gravity[0]) * 55f - v * 7.5f) * dt + (-acc * 0.0009f) + kick[0] * 30f * dt
-                    kick[0] *= 0.6f
+                    v += (-(a - gravity[0]) * 55f - v * 7.5f) * dt + (-acc * 0.0009f).coerceIn(-1f, 1f) + kick[0] * 30f * dt
+                    kick[0] *= Math.pow(0.6, (dt * 60f).toDouble()).toFloat() // igual a 60 e a 120 Hz
                     a = (a + v * dt).coerceIn(-9f, 9f)
                     tilt.floatValue = a
                 }
@@ -272,7 +279,7 @@ internal fun Hero(u: HabitUi, scroll: ScrollState, compact: Boolean = false, tim
     Row(Modifier.fillMaxWidth().padding(top = if (compact) 10.dp else 18.dp), verticalAlignment = Alignment.Bottom) {
         Box(
             Modifier.offset(x = (-4).dp).graphicsLayer {
-                val t = scrollT
+                val t = if (reduce) 0f else (scroll.value / span).coerceIn(0f, 1f)
                 val s = (1f - t * 0.42f) * (1f + punch)
                 scaleX = s; scaleY = s * (1f - 0.06f * deflate.value)
                 translationY = -22.dp.toPx() * t + minOf(scroll.value.toFloat(), span) * 0.32f
@@ -731,15 +738,14 @@ internal fun WeekStrip(u: HabitUi, ripple: Int, onDay: (LocalDate) -> Unit) {
                     val was = wasMissed.value; wasMissed.value = mark == Mark.MISSED
                     if (isToday && mark == Mark.MISSED && !was && !reduceW) { drop.snapTo(0f); drop.animateTo(1f, M.touch()) }
                 }
-                val hourNow = rememberHour()
-                val lantern = if (isToday && mark == null && !u.state.isRest(d) && !reduceW) lanternLevel(hourNow) else 0f
-                val glow = if (lantern > 0f) callBreath() else 0f
+                val lantern = if (isToday && mark == null && !u.state.isRest(d) && !reduceW) lanternLevel(LocalHour.current) else 0f
+                val glowS = breathState(lantern > 0f)
                 val rise = remember { Animatable(1f) }
                 LaunchedEffect(fxw.openAt) { if (fxw.openAt > 0 && !reduceW) { rise.snapTo(0f); delay(380L + k * 30L); try { rise.animateTo(1f, tween(M.BASE, easing = M.Arrive)) } finally { rise.snapTo(1f) } } }
                 val trope = d in u.state.tropes
                 val scar = d in u.state.scars
                 val call = isToday && mark == null && u.state.pendingTrope
-                val breathe = if (call) callBreath() else 0f
+                val breatheS = breathState(call)
                 // Hoje marcado: o quadrado se enche no gesto da cor (broto, flor, gota, maré…).
                 val gesture = remember { Animatable(1f) }
                 val ring = remember { Animatable(1f) }
@@ -764,6 +770,8 @@ internal fun WeekStrip(u: HabitUi, ripple: Int, onDay: (LocalDate) -> Unit) {
                     Canvas(Modifier.fillMaxSize()) {
                         val r = CornerRadius(Radius.cell.toPx())
                         // à noite, hoje ainda pendente acende como uma lanterna que respira
+                        val glow = glowS.value
+                        val breathe = breatheS.value
                         if (lantern > 0f) drawCircle(
                             androidx.compose.ui.graphics.Brush.radialGradient(
                                 listOf(pal.levels[3].copy(alpha = ((if (pal.bg.luminance() < 0.3f) 0.14f else 0.10f) + (if (pal.bg.luminance() < 0.3f) 0.14f else 0.12f) * glow) * lantern), Color.Transparent),
@@ -837,10 +845,13 @@ internal fun HojePage(
     onGrid: (androidx.compose.ui.geometry.Rect) -> Unit = {},
     footer: @Composable () -> Unit = {},
 ) {
-    val time = rememberFrameTime()
+    val near by remember { androidx.compose.runtime.derivedStateOf { scroll.value < 500 } }
+    val time = rememberFrameTime(LocalHojeActive.current && near)
     val pal = Tokens
-    val dark = pal.bg.red < 0.5f
-    val sky = skyTint(rememberHour(), dark, pal)
+    val dark = pal.bg.luminance() < 0.3f
+    val hour = rememberHour()
+    val sky = skyTint(hour, dark, pal)
+    androidx.compose.runtime.CompositionLocalProvider(LocalHour provides hour) {
     Box(Modifier.fillMaxSize()) {
     // O campo vivo: atrás do número, some ao rolar.
     androidx.compose.foundation.Canvas(
@@ -873,6 +884,7 @@ internal fun HojePage(
             MiniYear(u, onHistory, onGrid)
         }
         footer()
+    }
     }
     }
 }
@@ -990,3 +1002,19 @@ internal fun holdMillis(ctx: android.content.Context): Int =
 /** Começo de gesto: a constante própria no Android 14+, um tique antes disso. */
 internal fun gestureStart(): Int =
     if (android.os.Build.VERSION.SDK_INT >= 34) HapticFeedbackConstants.GESTURE_START else HapticFeedbackConstants.CLOCK_TICK
+
+/** A respiração (0..1, 1,2 s) como estado, para ser lida no desenho e não recompor a cada quadro. */
+@Composable
+internal fun breathState(on: Boolean): androidx.compose.runtime.State<Float> {
+    val zero = remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
+    if (!on || LocalReduceMotion.current) return zero
+    val t = androidx.compose.animation.core.rememberInfiniteTransition(label = "breath")
+    return t.animateFloat(
+        0f, 1f,
+        androidx.compose.animation.core.infiniteRepeatable(tween(1200, easing = FastOutSlowInEasing), androidx.compose.animation.core.RepeatMode.Reverse),
+        label = "breath",
+    )
+}
+
+/** A hora do dia para quem está dentro do Hoje (um relógio só). */
+internal val LocalHour = androidx.compose.runtime.compositionLocalOf { 12f }

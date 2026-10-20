@@ -36,16 +36,20 @@ private fun rnd(i: Int): Float = abs((sin(i * 12.9898 + 7.7) * 43758.5453) % 1.0
 
 /** Milissegundos desde que a tela apareceu, avançando a cada quadro (parado em "reduzir movimento"). */
 @Composable
-fun rememberFrameTime(): State<Long> {
+fun rememberFrameTime(active: Boolean = true): State<Long> {
     val t = remember { mutableLongStateOf(0L) }
     val reduce = LocalReduceMotion.current
-    LaunchedEffect(reduce) {
-        if (reduce) return@LaunchedEffect
-        val start = withFrameMillis { it }
-        while (true) withFrameMillis { t.longValue = it - start }
+    LaunchedEffect(reduce, active) {
+        if (reduce || !active) return@LaunchedEffect
+        val start = withFrameMillis { it } - t.longValue
+        var last = 0L
+        while (true) withFrameMillis { if (it - last >= 32) { last = it; t.longValue = it - start } }
     }
     return t
 }
+
+/** O Hoje está à vista (página 0, sem folha, mês ou retrospectiva por cima): só assim o que é contínuo anda. */
+val LocalHojeActive = androidx.compose.runtime.compositionLocalOf { true }
 
 /** Pétalas que caem e assentam: a hora em que cada uma nasceu. */
 class PetalState { val born = ArrayList<Long>() }
