@@ -69,6 +69,7 @@ class FxState {
     var flightAt by mutableLongStateOf(0L)      // uptime do começo do voo do ano até o mapa
     var frame by mutableIntStateOf(0)           // muda a cada quadro com partículas vivas: redesenha a camada
     var bursts by mutableIntStateOf(0)
+    var holdHint by mutableIntStateOf(0) // tocar em hoje na semana: o botão pede para segurar
     var openAt by mutableLongStateOf(0L)        // abertura do app
     var scrub by androidx.compose.runtime.mutableFloatStateOf(0f) // voltar no tempo: quantos dias atrás o número mostra
 

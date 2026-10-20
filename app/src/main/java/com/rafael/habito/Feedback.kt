@@ -39,7 +39,7 @@ object Haptics {
     /** Três pulsos crescentes para os marcos. */
     fun milestone(ctx: Context) {
         val v = ctx.getSystemService(VibratorManager::class.java).defaultVibrator
-        val timings = longArrayOf(0, 28, 70, 28, 70, 60)
+        val timings = longArrayOf(0, 36, 70, 36, 70, 70)
         val effect = if (v.hasAmplitudeControl()) {
             VibrationEffect.createWaveform(timings, intArrayOf(0, 140, 0, 190, 0, 255), -1)
         } else {

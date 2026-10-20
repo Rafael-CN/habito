@@ -148,6 +148,8 @@ fun HomeScreen(vm: HabitViewModel) {
 
     fun toast(msg: String) = Toast.makeText(ctx, msg, Toast.LENGTH_SHORT).show()
     var ladderJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    var weekPick by remember { mutableStateOf<LocalDate?>(null) }
+    LaunchedEffect(weekPick) { if (weekPick != null) { delay(3600); weekPick = null } }
     val lastChangeToday = remember { mutableStateOf(true) }
     val celebrated = rememberSaveable { mutableStateOf("") }
     fun buzz(kind: Int) { if (u?.state?.haptics != false) view.performHapticFeedback(kind) }
@@ -163,7 +165,7 @@ fun HomeScreen(vm: HabitViewModel) {
         val previous = cur.markOf(date)
         ladderJob?.cancel()
         lastChangeToday.value = date == cur.today
-        buzz(when (mark) { Mark.DONE -> HapticFeedbackConstants.CONFIRM; Mark.MISSED -> HapticFeedbackConstants.REJECT; null -> HapticFeedbackConstants.CLOCK_TICK })
+        buzz(if (mark == Mark.DONE) HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.CLOCK_TICK)
         sound(when (mark) { Mark.DONE -> Sfx.FEITO; Mark.MISSED -> Sfx.NAO_FIZ; null -> Sfx.DESFAZER })
         // Motion: só hoje ganha a cena inteira (número, régua com tiques, tela sem cor no não fiz).
         if (date == cur.today && previous != mark && !reduce) {
@@ -380,7 +382,14 @@ fun HomeScreen(vm: HabitViewModel) {
                         u, ripple, hojeScroll,
                         onDone = { change(u.today, if (u.todayMark == Mark.DONE) null else Mark.DONE) },
                         onSkip = { change(u.today, if (u.todayMark == Mark.MISSED) null else Mark.MISSED) },
-                        onDay = { d -> change(d, Cal.next(u.markOf(d))) },
+                        onDay = { d ->
+                            when {
+                                d == u.today -> { fx.holdHint++; tick() }
+                                d == weekPick -> { weekPick = null; change(d, Cal.next(u.markOf(d))) }
+                                else -> { weekPick = d; tick(); sound(Sfx.TOQUE) }
+                            }
+                        },
+                        picked = weekPick,
                         onHistory = goHistory,
                         onGrid = { gridRect = it },
                         footer = {

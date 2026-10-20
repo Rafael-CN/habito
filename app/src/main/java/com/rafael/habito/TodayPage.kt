@@ -1,5 +1,6 @@
 package com.rafael.habito
 
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -276,7 +277,11 @@ internal fun Hero(u: HabitUi, scroll: ScrollState, compact: Boolean = false, tim
             }
         }
     }
-    Row(Modifier.fillMaxWidth().padding(top = if (compact) 10.dp else 18.dp), verticalAlignment = Alignment.Bottom) {
+    Row(
+        Modifier.fillMaxWidth().padding(top = if (compact) 10.dp else 18.dp)
+            .semantics(mergeDescendants = true) { contentDescription = "$shown ${unitLabel(u, " ")}" },
+        verticalAlignment = Alignment.Bottom,
+    ) {
         Box(
             Modifier.offset(x = (-4).dp).graphicsLayer {
                 val t = if (reduce) 0f else (scroll.value / span).coerceIn(0f, 1f)
@@ -510,7 +515,7 @@ internal fun CompactHeader(u: HabitUi, scroll: ScrollState) {
 }
 
 @Composable
-internal fun TodayPanel(u: HabitUi, ripple: Int, onDone: () -> Unit, onSkip: () -> Unit, onDay: (LocalDate) -> Unit) {
+internal fun TodayPanel(u: HabitUi, ripple: Int, onDone: () -> Unit, onSkip: () -> Unit, onDay: (LocalDate) -> Unit, picked: LocalDate? = null) {
     val pal = Tokens
     Panel {
         Text(
@@ -523,7 +528,7 @@ internal fun TodayPanel(u: HabitUi, ripple: Int, onDone: () -> Unit, onSkip: () 
         Spacer(Modifier.height(14.dp))
         Actions(u.todayMark, u.state.doneAt, onDone, onSkip, HoldFeedback(u.state.haptics, u.state.sounds, u.state.palette))
         Spacer(Modifier.height(18.dp))
-        WeekStrip(u, ripple, onDay)
+        WeekStrip(u, ripple, onDay, picked)
     }
 }
 
@@ -537,6 +542,8 @@ internal fun TodayPanel(u: HabitUi, ripple: Int, onDone: () -> Unit, onSkip: () 
 internal fun Actions(mark: Mark?, doneAt: Long, onDone: () -> Unit, onSkip: () -> Unit, fb: HoldFeedback = HoldFeedback(false, false, "verde")) {
     // Um toque rápido não marca: o rótulo pede para segurar por um instante.
     var hint by remember { mutableStateOf<Int?>(null) } // 0 = não fiz, 1 = feito
+    val holdHint = LocalFx.current.holdHint
+    LaunchedEffect(holdHint) { if (holdHint > 0) hint = 1 }
     LaunchedEffect(hint) { if (hint != null) { delay(1600); hint = null } }
     val pal = Tokens
     val reduce = LocalReduceMotion.current
@@ -712,7 +719,7 @@ internal fun ActionBox(
 
 /** Os últimos 7 dias como células grandes com o número do dia; toque corrige o dia. */
 @Composable
-internal fun WeekStrip(u: HabitUi, ripple: Int, onDay: (LocalDate) -> Unit) {
+internal fun WeekStrip(u: HabitUi, ripple: Int, onDay: (LocalDate) -> Unit, picked: LocalDate? = null) {
     val pal = Tokens
     val days = remember(u.today) { (6 downTo 0).map { u.today.minusDays(it.toLong()) } }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -788,6 +795,8 @@ internal fun WeekStrip(u: HabitUi, ripple: Int, onDay: (LocalDate) -> Unit) {
                             drawCircle(pal.miss, 2.5.dp.toPx() * (0.4f + 0.6f * k).coerceAtLeast(0.4f), Offset(size.width - 8.5.dp.toPx(), size.height - 8.5.dp.toPx() - (1f - k) * 14.dp.toPx()), alpha = k.coerceIn(0f, 1f))
                         }
                         else if (u.state.isRest(d) && d != u.today) drawRect(pal.text3.copy(alpha = 0.7f), Offset(size.width - 16.dp.toPx(), size.height - 9.dp.toPx()), Size(8.dp.toPx(), 1.5.dp.toPx()))
+                        // dia passado escolhido: espera o segundo toque para valer
+                        if (d == picked) drawRoundRect(pal.ink, Offset(-2.dp.toPx(), -2.dp.toPx()), Size(size.width + 4.dp.toPx(), size.height + 4.dp.toPx()), CornerRadius(r.x + 2.dp.toPx()), style = Stroke(1.5.dp.toPx()))
                         if (call) callRing(pal, Offset.Zero, size.width, size.height, r.x, breathe)
                         else if (isToday && mark == null) {
                             val i = 0.75.dp.toPx()
@@ -844,6 +853,7 @@ internal fun HojePage(
     onDone: () -> Unit, onSkip: () -> Unit, onDay: (LocalDate) -> Unit, onHistory: () -> Unit,
     onGrid: (androidx.compose.ui.geometry.Rect) -> Unit = {},
     footer: @Composable () -> Unit = {},
+    picked: LocalDate? = null,
 ) {
     val near by remember { androidx.compose.runtime.derivedStateOf { scroll.value < 500 } }
     val time = rememberFrameTime(LocalHojeActive.current && near)
@@ -877,7 +887,7 @@ internal fun HojePage(
         }
         Column(Modifier.padding(top = 28.dp).entrance(1)) {
             Rule(index = 1)
-            TodayPanel(u, ripple, onDone = onDone, onSkip = onSkip, onDay = onDay)
+            TodayPanel(u, ripple, onDone = onDone, onSkip = onSkip, onDay = onDay, picked = picked)
         }
         Column(Modifier.padding(top = 28.dp).entrance(2)) {
             Rule(index = 2)
