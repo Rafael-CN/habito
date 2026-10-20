@@ -1,5 +1,6 @@
 package com.rafael.habito
 
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -230,7 +231,15 @@ internal fun Hero(u: HabitUi, scroll: ScrollState, compact: Boolean = false, tim
     val scope = rememberCoroutineScope()
     val scrubBack = remember { Animatable(0f) }
     val scrubJob = remember { arrayOfNulls<kotlinx.coroutines.Job>(1) }
-    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { fx.scrub = 0f } }
+    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { fx.scrub = 0f; fx.parked = null } }
+    // um dia estacionado (pelo arrasto ou pelo leitor de tela) que foi solto: o número corre de volta até hoje
+    LaunchedEffect(fx.parked) {
+        if (fx.parked == null && fx.scrub > 0f && scrubJob[0]?.isActive != true) {
+            scrubBack.snapTo(fx.scrub)
+            scrubBack.animateTo(0f, spring(1f, 60f)) { fx.scrub = value.coerceAtLeast(0f) }
+            fx.scrub = 0f
+        }
+    }
     // até o primeiro registro (não a janela do mapa); sem registro, o gesto nem existe
     val maxBack = remember(u.today, u.state.done, u.state.missed) {
         val first = (u.state.done + u.state.missed).minOrNull()
@@ -279,7 +288,14 @@ internal fun Hero(u: HabitUi, scroll: ScrollState, compact: Boolean = false, tim
     }
     Row(
         Modifier.fillMaxWidth().padding(top = if (compact) 10.dp else 18.dp)
-            .semantics(mergeDescendants = true) { contentDescription = "$shown ${unitLabel(u, " ")}" },
+            .semantics(mergeDescendants = true) {
+                contentDescription = if (fx.scrub >= 1f) "$shown, ${u.today.minusDays(fx.scrub.toLong()).format(DAY_MONTH)}" else "$shown ${unitLabel(u, " ")}"
+                if (!u.weekly && maxBack > 0f) customActions = listOf(
+                    androidx.compose.ui.semantics.CustomAccessibilityAction("Dia anterior") { fx.scrub = (kotlin.math.floor(fx.scrub) + 1f).coerceAtMost(maxBack); fx.parked = u.today.minusDays(fx.scrub.toLong()); true },
+                    androidx.compose.ui.semantics.CustomAccessibilityAction("Dia seguinte") { fx.scrub = (kotlin.math.floor(fx.scrub) - 1f).coerceAtLeast(0f); fx.parked = if (fx.scrub >= 1f) u.today.minusDays(fx.scrub.toLong()) else null; true },
+                    androidx.compose.ui.semantics.CustomAccessibilityAction("Voltar para hoje") { fx.scrub = 0f; fx.parked = null; true },
+                )
+            },
         verticalAlignment = Alignment.Bottom,
     ) {
         Box(
@@ -304,17 +320,26 @@ internal fun Hero(u: HabitUi, scroll: ScrollState, compact: Boolean = false, tim
                         fun stepAt(days: Float) = if (days < 7f) d1 else if (days < 30f) d2 else d3
                         var dist = 0f
                         var lastTick = 0L
+                        var lastMove = 0L
                         val tracker = androidx.compose.ui.input.pointer.util.VelocityTracker()
                         detectHorizontalDragGestures(
                             onDragStart = {
-                                scrubJob[0]?.cancel(); tracker.resetTracking()
+                                scrubJob[0]?.cancel(); tracker.resetTracking(); fx.parked = null
                                 // retoma de onde a volta estava
                                 dist = run { var lo = 0f; var hi = 400f * d1; repeat(30) { val m = (lo + hi) / 2; if (daysFor(m) < fx.scrub) { lo = m } else { hi = m } }; lo }
                             },
                             onDragEnd = {
                                 val from = fx.scrub
                                 val vx = tracker.calculateVelocity().x // px/s; para a direita acelera a volta
-                                if (from > 0f) scrubJob[0] = scope.launch {
+                                val still = android.os.SystemClock.uptimeMillis() - lastMove >= 400 && kotlin.math.abs(vx) < 200f
+                                if (from >= 1f && still) scrubJob[0] = scope.launch {
+                                    fx.scrub = kotlin.math.floor(from)
+                                    fx.parked = u.today.minusDays(fx.scrub.toLong())
+                                    if (u.state.haptics) view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                    // espera: 4 s parado, ou até marcar aquele dia (o HomeScreen solta o dia)
+                                    kotlinx.coroutines.withTimeoutOrNull(4000) { while (fx.parked != null) delay(50) }
+                                    fx.parked = null // a volta é feita pelo efeito abaixo
+                                } else if (from > 0f) scrubJob[0] = scope.launch {
                                     scrubBack.snapTo(from)
                                     scrubBack.animateTo(0f, spring(1f, 60f), initialVelocity = (-vx / stepAt(from)).coerceIn(-400f, 0f)) { fx.scrub = value.coerceAtLeast(0f) }
                                     fx.scrub = 0f
@@ -324,6 +349,7 @@ internal fun Hero(u: HabitUi, scroll: ScrollState, compact: Boolean = false, tim
                         ) { change, dx ->
                             change.consume()
                             tracker.addPosition(change.uptimeMillis, change.position)
+                            if (kotlin.math.abs(dx) > 0.5f) lastMove = android.os.SystemClock.uptimeMillis()
                             val before = fx.scrub.toInt()
                             dist = (dist - dx).coerceAtLeast(0f)
                             fx.scrub = daysFor(dist).coerceIn(0f, maxBack)
@@ -534,7 +560,11 @@ internal fun TodayPanel(u: HabitUi, ripple: Int, onDone: () -> Unit, onSkip: () 
             style = Type.title.copy(fontWeight = FontWeight.Medium), color = pal.ink,
         )
         Spacer(Modifier.height(14.dp))
-        Actions(u.todayMark, u.state.doneAt, onDone, onSkip, HoldFeedback(u.state.haptics, u.state.sounds, u.state.palette))
+        val parked = LocalFx.current.parked
+        Actions(
+            if (parked != null) u.markOf(parked) else u.todayMark, if (parked != null) 0L else u.state.doneAt, onDone, onSkip,
+            HoldFeedback(u.state.haptics, u.state.sounds, u.state.palette), parked?.format(DAY_MONTH),
+        )
         Spacer(Modifier.height(18.dp))
         WeekStrip(u, ripple, onDay, picked)
     }
@@ -547,7 +577,7 @@ internal fun TodayPanel(u: HabitUi, ripple: Int, onDone: () -> Unit, onSkip: () 
  * Tocar no bloco expandido desfaz.
  */
 @Composable
-internal fun Actions(mark: Mark?, doneAt: Long, onDone: () -> Unit, onSkip: () -> Unit, fb: HoldFeedback = HoldFeedback(false, false, "verde")) {
+internal fun Actions(mark: Mark?, doneAt: Long, onDone: () -> Unit, onSkip: () -> Unit, fb: HoldFeedback = HoldFeedback(false, false, "verde"), day: String? = null) {
     // Um toque rápido não marca: o rótulo pede para segurar por um instante.
     var hint by remember { mutableStateOf<Int?>(null) } // 0 = não fiz, 1 = feito
     val holdHint = LocalFx.current.holdHint
@@ -590,7 +620,7 @@ internal fun Actions(mark: Mark?, doneAt: Long, onDone: () -> Unit, onSkip: () -
                 Row(Modifier.align(Alignment.CenterStart).padding(start = 16.dp).wrapContentWidth(Alignment.Start, unbounded = true), verticalAlignment = Alignment.CenterVertically) {
                     Icon(painterResource(R.drawable.ic_x), null, Modifier.size(16.dp), tint = missFg)
                     Spacer(Modifier.width(10.dp))
-                    RollingLabel(if (hint == 0) "Segure" else if (mark == Mark.MISSED) "Não fiz hoje" else "Não fiz", Type.bodyL.copy(fontWeight = FontWeight.SemiBold), missFg)
+                    RollingLabel(if (hint == 0) "Segure" else if (mark == Mark.MISSED) (if (day != null) "Não fiz em $day" else "Não fiz hoje") else "Não fiz", Type.bodyL.copy(fontWeight = FontWeight.SemiBold), missFg)
                 }
                 Canvas(Modifier.align(Alignment.CenterEnd).padding(end = 14.dp).size(6.dp).graphicsLayer { scaleX = dot; scaleY = dot }) { drawCircle(pal.miss) }
             }
@@ -604,7 +634,7 @@ internal fun Actions(mark: Mark?, doneAt: Long, onDone: () -> Unit, onSkip: () -
                     CheckMark(doneFg, check.value)
                     Spacer(Modifier.width(10.dp))
                     RollingLabel(
-                        if (hint == 1) (if (mark == Mark.DONE) "Segure para desfazer" else "Segure para marcar") else if (mark == Mark.DONE) "Feito hoje" else "Marcar feito",
+                        if (hint == 1) (if (mark == Mark.DONE) "Segure para desfazer" else "Segure para marcar") else if (mark == Mark.DONE) (if (day != null) "Feito em $day" else "Feito hoje") else (if (day != null) "Marcar $day" else "Marcar feito"),
                         Type.bodyL.copy(fontWeight = FontWeight.SemiBold), doneFg,
                     )
                 }

@@ -380,8 +380,16 @@ fun HomeScreen(vm: HabitViewModel) {
                     if (u == null) return@HorizontalPager
                     if (p == 0) androidx.compose.runtime.CompositionLocalProvider(LocalHojeActive provides hojeActive) { HojePage(
                         u, ripple, hojeScroll,
-                        onDone = { change(u.today, if (u.todayMark == Mark.DONE) null else Mark.DONE) },
-                        onSkip = { change(u.today, if (u.todayMark == Mark.MISSED) null else Mark.MISSED) },
+                        onDone = {
+                            val d = fx.parked ?: u.today
+                            change(d, if (u.markOf(d) == Mark.DONE) null else Mark.DONE)
+                            if (fx.parked != null) scope.launch { delay(700); fx.parked = null } // o número volta para hoje
+                        },
+                        onSkip = {
+                            val d = fx.parked ?: u.today
+                            change(d, if (u.markOf(d) == Mark.MISSED) null else Mark.MISSED)
+                            if (fx.parked != null) scope.launch { delay(700); fx.parked = null }
+                        },
                         onDay = { d ->
                             when {
                                 d == u.today -> { fx.holdHint++; tick() }

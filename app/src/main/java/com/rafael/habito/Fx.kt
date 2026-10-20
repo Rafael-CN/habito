@@ -88,6 +88,7 @@ class FxState {
     var frame by mutableIntStateOf(0)           // muda a cada quadro com partículas vivas: redesenha a camada
     var bursts by mutableIntStateOf(0)
     var holdHint by mutableIntStateOf(0) // tocar em hoje na semana: o botão pede para segurar
+    var parked by androidx.compose.runtime.mutableStateOf<LocalDate?>(null) // voltar no tempo parado num dia: o botão marca esse dia
     var openAt by mutableLongStateOf(0L)        // abertura do app
     var scrub by androidx.compose.runtime.mutableFloatStateOf(0f) // voltar no tempo: quantos dias atrás o número mostra
 
