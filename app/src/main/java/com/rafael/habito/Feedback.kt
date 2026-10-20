@@ -36,9 +36,26 @@ object Haptics {
         vibrate(ctx, VibrationEffect.createPredefined(if (done) VibrationEffect.EFFECT_CLICK else VibrationEffect.EFFECT_TICK))
     }
 
-    /** Três pulsos crescentes para os marcos. */
+    /**
+     * O marco: onde o motor sabe, uma frase de primitivas (um toque baixo, um tique e um baque, crescendo);
+     * senão, três pulsos crescentes.
+     */
     fun milestone(ctx: Context) {
         val v = ctx.getSystemService(VibratorManager::class.java).defaultVibrator
+        if (Build.VERSION.SDK_INT >= 31 && v.areAllPrimitivesSupported(
+                VibrationEffect.Composition.PRIMITIVE_LOW_TICK, VibrationEffect.Composition.PRIMITIVE_TICK, VibrationEffect.Composition.PRIMITIVE_THUD,
+            )
+        ) {
+            vibrate(
+                ctx,
+                VibrationEffect.startComposition()
+                    .addPrimitive(VibrationEffect.Composition.PRIMITIVE_LOW_TICK, 0.35f)
+                    .addPrimitive(VibrationEffect.Composition.PRIMITIVE_TICK, 0.55f, 60)
+                    .addPrimitive(VibrationEffect.Composition.PRIMITIVE_THUD, 0.9f, 80)
+                    .compose(),
+            )
+            return
+        }
         val timings = longArrayOf(0, 36, 70, 36, 70, 70)
         val effect = if (v.hasAmplitudeControl()) {
             VibrationEffect.createWaveform(timings, intArrayOf(0, 140, 0, 190, 0, 255), -1)

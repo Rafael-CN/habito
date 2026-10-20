@@ -79,6 +79,8 @@ fun YearGlyph(u: HabitUi, grid: Rect, marco: Int, startDelay: Long = 560, onEnd:
     val end by rememberUpdatedState(onEnd)
     var t by remember { mutableLongStateOf(0L) }
     var release by remember { mutableLongStateOf(Long.MAX_VALUE) } // quando a volta começa (o toque adianta)
+    // voltar do sistema também adianta a volta (não sai do app no meio do glifo)
+    androidx.activity.compose.BackHandler { if (release == Long.MAX_VALUE || release > t) release = maxOf(t, 400L) }
     var started by remember { mutableStateOf(false) }
     val hold = 2200L
     LaunchedEffect(Unit) {
