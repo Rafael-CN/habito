@@ -173,12 +173,8 @@ fun HomeScreen(vm: HabitViewModel) {
             } else if (mark == Mark.MISSED) fx.naoFiz++
         }
         vm.setMark(date, mark)
-        snackJob?.cancel()
-        snackJob = scope.launch {
-            snackbar.currentSnackbarData?.dismiss()
-            val r = snackbar.showSnackbar(describe(date, cur.today, mark), actionLabel = "Desfazer", duration = SnackbarDuration.Short)
-            if (r == SnackbarResult.ActionPerformed) { buzz(HapticFeedbackConstants.CLOCK_TICK); sound(Sfx.DESFAZER); vm.setMark(date, previous) }
-        }
+        // Sem aviso de desfazer: tocar de novo desfaz. O leitor de tela ainda ouve o que mudou.
+        view.announceForAccessibility(describe(date, cur.today, mark))
     }
 
     // Marco alcançado ao marcar hoje: a sequência acende e o aparelho dá três pulsos (se "comemorar" estiver ligado).
