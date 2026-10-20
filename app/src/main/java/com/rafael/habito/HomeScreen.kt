@@ -155,7 +155,7 @@ fun HomeScreen(vm: HabitViewModel) {
     val fx = LocalFx.current
     // Não fiz: a tela perde um pouco de cor e volta (Android 12+).
     val desat = remember { Animatable(0f) }
-    LaunchedEffect(fx.naoFiz) { if (fx.naoFiz > 0 && !reduce) { desat.animateTo(1f, tween(380)); desat.animateTo(0f, tween(900)) } }
+    LaunchedEffect(fx.naoFiz) { if (fx.naoFiz > 0 && !reduce) { desat.animateTo(1f, tween(M.BASE, easing = M.Depart)); desat.animateTo(0f, tween(M.REVEAL, easing = M.Arrive)) } }
     fun tick() = buzz(HapticFeedbackConstants.CLOCK_TICK)
 
     fun change(date: LocalDate, mark: Mark?) {
@@ -206,7 +206,7 @@ fun HomeScreen(vm: HabitViewModel) {
                 scope.launch {
                     delay(LAUNCH_RISE)
                     if (cur.state.haptics) Haptics.milestone(ctx)
-                    if (fx.number != Rect.Zero) fx.burst(fx.number.center, 46, 5.5f * view.resources.displayMetrics.density, listOf(pal.levels[3], pal.levels[4], pal.levels[2], pal.gold))
+                    if (fx.number != Rect.Zero) fx.burst(fx.number.center, 24, 5f * view.resources.displayMetrics.density, listOf(pal.levels[3], pal.levels[4], pal.levels[2]))
                 }
             } else if (cur.state.haptics) Haptics.milestone(ctx)
         }
@@ -341,6 +341,7 @@ fun HomeScreen(vm: HabitViewModel) {
                 val tl = Offset(g.left + col * (cell + gap), g.top + row * (cell + gap))
                 list += FlightCell(Rect(tl, Size(cell, cell)), d, pal.levels[cur.level(d)], col)
             }
+            fx.flightShift = view.width.toFloat()
             fx.flight = list; fx.flightAt = uptime()
             sound(Sfx.PAGINA)
         }
@@ -483,7 +484,7 @@ fun HomeScreen(vm: HabitViewModel) {
         }
 
         // Marco: o ano se solta do mapa e forma o glifo da cor (acima de tudo, até do aviso de desfazer).
-        glyphMarco?.let { m -> if (u != null) YearGlyph(u, gridRect, m, startDelay = if (reduce) 560 else LAUNCH_RISE + 520) { glyphMarco = null } }
+        glyphMarco?.let { m -> if (u != null) YearGlyph(u, gridRect, m, startDelay = if (reduce) 560 else LAUNCH_RISE + 240) { glyphMarco = null } }
 
         // Motion: partículas, o véu do marco e o voo do ano até o mapa, por cima de tudo.
         FxLayer(fx, pal)

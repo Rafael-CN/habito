@@ -373,7 +373,7 @@ private fun LetterEditor(s: HabitState, a: SettingsActions, onDone: () -> Unit) 
 private fun BackupState(s: HabitState, a: SettingsActions) {
     val pal = Tokens
     val stale = AutoBackup.stale(s)
-    val dot by animateColorAsState(when { stale -> pal.gold; s.backupAt == 0L -> pal.text3; else -> pal.done }, motion(300), label = "bdot")
+    val dot by animateColorAsState(when { stale -> pal.miss; s.backupAt == 0L -> pal.text3; else -> pal.done }, motion(300), label = "bdot")
     val text = when {
         s.backupAt == 0L -> "Nenhuma cópia ainda"
         else -> {

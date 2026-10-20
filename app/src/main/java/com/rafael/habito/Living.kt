@@ -194,10 +194,10 @@ fun DrawScope.livingField(pal: Palette, t: Long, dark: Boolean) {
             }
         }
         // Oceano: linhas de maré.
-        Glyph.ESTRELA_MAR -> for (k in 0 until 15) {
+        Glyph.ESTRELA_MAR -> for (k in 0 until 9) {
             val p = Path(); var x = 0f
-            while (x <= w) { val y = 50 * d + k * 28 * d + sin(x / 40f + tf / 900f + k) * 8 * d + sin(x / 17f - tf / 1300f) * 3 * d; if (x == 0f) p.moveTo(x, y) else p.lineTo(x, y); x += 8f }
-            drawPath(p, c[2].copy(alpha = a), style = androidx.compose.ui.graphics.drawscope.Stroke(1.4f * d))
+            while (x <= w) { val y = 50 * d + k * 44 * d + sin(x / 40f + tf / 900f + k) * 8 * d + sin(x / 17f - tf / 1300f) * 3 * d; if (x == 0f) p.moveTo(x, y) else p.lineTo(x, y); x += 8f }
+            drawPath(p, c[2].copy(alpha = a * 0.6f), style = androidx.compose.ui.graphics.drawscope.Stroke(1.4f * d))
         }
         // Azul: neve fina — cristais pequenos descendo devagar, quase transparentes.
         Glyph.CRISTAL -> for (k in 0 until 18) {

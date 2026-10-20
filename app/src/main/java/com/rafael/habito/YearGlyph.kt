@@ -80,7 +80,7 @@ fun YearGlyph(u: HabitUi, grid: Rect, marco: Int, startDelay: Long = 560, onEnd:
     var t by remember { mutableLongStateOf(0L) }
     var release by remember { mutableLongStateOf(Long.MAX_VALUE) } // quando a volta começa (o toque adianta)
     var started by remember { mutableStateOf(false) }
-    val hold = 2900L
+    val hold = 2200L
     LaunchedEffect(Unit) {
         kotlinx.coroutines.delay(startDelay) // primeiro o quadrado de hoje se enche (e, com motion, o lançamento do marco)
         started = true
@@ -182,7 +182,7 @@ fun YearGlyph(u: HabitUi, grid: Rect, marco: Int, startDelay: Long = 560, onEnd:
         if (num > 0f) {
             val style = Type.hero.copy(fontSize = 104.sp, lineHeight = 100.sp, color = pal.ink)
             val layout = measurer.measure("$marco", style)
-            val sc = 0.7f + 0.3f * outBack(num)
+            val sc = 0.85f + 0.15f * num
             withTransform({ scale(sc, sc, Offset(center.x, center.y + glyphSize / 2 + 70 * density.density)) }) {
                 drawText(layout, topLeft = Offset(center.x - layout.size.width / 2, center.y + glyphSize / 2 + 24 * density.density), alpha = num)
             }

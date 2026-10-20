@@ -69,9 +69,9 @@ fun HabitTheme(palette: String = "verde", mode: Int = 0, paper: Boolean = false,
         if (!reduce && origin != null && InkFx.armed) {
             inkFrom.value = origin; InkFx.origin = null
             swap.snapTo(1f)
-            ink.snapTo(0f); ink.animateTo(1f, tween(900, easing = androidx.compose.animation.core.CubicBezierEasing(0.5f, 0f, 0.15f, 1f)))
+            ink.snapTo(0f); ink.animateTo(1f, tween(700, easing = androidx.compose.animation.core.CubicBezierEasing(0.16f, 1f, 0.3f, 1f)))
             inkFrom.value = null
-        } else if (reduce) swap.snapTo(1f) else { swap.snapTo(0f); swap.animateTo(1f, tween(Motion.slow)) }
+        } else if (reduce) swap.snapTo(1f) else { swap.snapTo(0f); swap.animateTo(1f, tween(320)) }
         recorded.value = palette
     }
     val p = if (swap.value >= 1f) target else lerpPalette(from.value, target, swap.value)

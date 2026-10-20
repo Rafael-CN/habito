@@ -84,7 +84,7 @@ fun Modifier.entrance(index: Int): Modifier {
     val p = remember { Animatable(if (reduce || Entrance.done) 1f else 0f) }
     LaunchedEffect(revealed, reduce) {
         if (reduce) p.snapTo(1f)
-        else if (revealed && p.value < 1f) { delay(index * 45L); p.animateTo(1f, Motion.enter); Entrance.done = true }
+        else if (revealed && p.value < 1f) { delay(index * 30L); p.animateTo(1f, Motion.enter); Entrance.done = true }
     }
     return this.graphicsLayer { alpha = p.value; translationY = (1f - p.value) * 10.dp.toPx() }
 }

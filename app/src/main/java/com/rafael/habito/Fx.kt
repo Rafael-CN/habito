@@ -1,5 +1,6 @@
 package com.rafael.habito
 
+import androidx.compose.ui.graphics.luminance
 import android.os.SystemClock
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
@@ -49,8 +50,8 @@ import kotlin.random.Random
  */
 
 /** Tempos do lançamento do marco: o swell e o impacto (o som do marco tem o impacto em 1,25 s). */
-const val LAUNCH_RISE = 1250L
-const val LAUNCH_TOTAL = 2300L
+const val LAUNCH_RISE = 900L
+const val LAUNCH_TOTAL = 1700L
 /** A régua acendendo depois do feito: começa em [LADDER_START] ms, um traço a cada [LADDER_STEP] ms. */
 const val LADDER_START = 220L
 const val LADDER_STEP = 55L
@@ -78,6 +79,7 @@ class FxState {
     var heatStep = 0f
     var heatCell = 0f
     var heatStart: LocalDate = LocalDate.now()
+    var flightShift = 0f // quanto a História ainda vai andar até parar (o voo mira o lugar final)
     var flight: List<FlightCell> = emptyList()
 
     val particles = ArrayList<Particle>()
@@ -146,7 +148,7 @@ fun FxLayer(fx: FxState, pal: Palette) {
     val flight = remember { Animatable(1f) }
     LaunchedEffect(fx.flightAt) {
         if (fx.flightAt == 0L) return@LaunchedEffect
-        flight.snapTo(0f); flight.animateTo(1f, tween(760, easing = LinearEasing)); fx.flight = emptyList(); fx.flightAt = 0L
+        try { flight.snapTo(0f); flight.animateTo(1f, tween(760, easing = LinearEasing)) } finally { fx.flight = emptyList(); fx.flightAt = 0L }
     }
 
     Canvas(Modifier.fillMaxSize()) {
@@ -157,35 +159,21 @@ fun FxLayer(fx: FxState, pal: Palette) {
             val c = fx.number.center
             val rise = (t / LAUNCH_RISE).coerceIn(0f, 1f)
             val after = ((t - LAUNCH_RISE) / 900f).coerceIn(0f, 1f)
-            val veil = if (t < LAUNCH_RISE) rise.pow(1.6f) * 0.62f else 0.62f * (1f - ease(after))
+            // no claro um véu de tinta (não preto) fecha a cena em volta do número; no escuro o próprio fundo já faz isso
+            val darkBg = pal.bg.luminance() < 0.3f
+            val veil = if (darkBg) 0f else if (t < LAUNCH_RISE) rise.pow(1.6f) * 0.28f else 0.28f * (1f - ease(after))
             if (veil > 0f) drawRect(
                 Brush.radialGradient(
-                    0f to Color.Transparent, 0.35f to Color.Black.copy(alpha = veil * 0.15f), 1f to Color.Black.copy(alpha = veil),
+                    0f to Color.Transparent, 0.35f to pal.ink.copy(alpha = veil * 0.15f), 1f to pal.ink.copy(alpha = veil),
                     center = c, radius = (max(size.width, size.height) * 0.75f).coerceAtLeast(1f),
                 ),
             )
-            val glow = if (t < LAUNCH_RISE) rise.pow(2f) * 0.28f else 0.28f * (1f - ease(after))
+            val gmax = if (darkBg) 0.38f else 0.28f
+            val glow = if (t < LAUNCH_RISE) rise.pow(2f) * gmax else gmax * (1f - ease(after))
             if (glow > 0f) drawCircle(
                 Brush.radialGradient(listOf(pal.levels[4].copy(alpha = glow), Color.Transparent), center = c, radius = (fx.number.width * (0.7f + 0.4f * rise + after)).coerceAtLeast(1f)),
                 radius = fx.number.width * (0.7f + 0.4f * rise + after), center = c,
             )
-            if (t >= LAUNCH_RISE) {
-                // o glifo da cor gira para dentro no canto do número
-                val g = ((t - LAUNCH_RISE) / 760f).coerceIn(0f, 1f)
-                val ga = if (t < LAUNCH_RISE + 700) 1f else 1f - ((t - LAUNCH_RISE - 700) / 300f).coerceIn(0f, 1f)
-                if (ga > 0f) {
-                    val back = 1f + 2.4f * (g - 1f) * (g - 1f) * (g - 1f) + 1.4f * (g - 1f) * (g - 1f)
-                    star(
-                        pal.levels[4].copy(alpha = ga * g.coerceAtMost(0.25f) * 4f), Offset(fx.number.right + 14 * density, fx.number.top + 26 * density),
-                        30 * density * back.coerceAtLeast(0f), turn = -150f * (1f - ease(g)), glyph = pal.glyph,
-                    )
-                }
-                val k = ((t - LAUNCH_RISE) / 700f).coerceIn(0f, 1f)
-                if (k < 1f) drawCircle(
-                    pal.levels[4].copy(alpha = 0.55f * (1f - k)), radius = size.width * (0.15f + 0.9f * ease(k)), center = c,
-                    style = Stroke(width = (6f * (1f - k) + 1f) * density),
-                )
-            }
         }
         // ----- o ano vira mapa: cada quadrado do mini ano voa até o seu dia no mapa, da coluna mais nova à mais velha
         if (fx.flightAt != 0L && fx.flight.isNotEmpty() && fx.heatOrigin != Offset.Unspecified) {
@@ -193,8 +181,8 @@ fun FxLayer(fx: FxState, pal: Palette) {
             for (f in fx.flight) {
                 val idx = ChronoUnit.DAYS.between(fx.heatStart, f.date).toInt()
                 if (idx < 0) continue
-                val to = Offset(fx.heatOrigin.x + (idx / 7) * fx.heatStep, fx.heatOrigin.y + (idx % 7) * fx.heatStep)
-                val delay = (19 - f.col) * 0.012f
+                val to = Offset(fx.heatOrigin.x + (idx / 7) * fx.heatStep - fx.flightShift, fx.heatOrigin.y + (idx % 7) * fx.heatStep)
+                val delay = (19 - f.col) * 0.018f
                 val k = ease(((p - delay) / 0.72f).coerceIn(0f, 1f))
                 val size0 = f.from.width; val size1 = fx.heatCell
                 val s = size0 + (size1 - size0) * k
@@ -236,21 +224,33 @@ fun OpeningGlyph(pal: Palette, onStart: () -> Unit, onEnd: () -> Unit) {
     val t = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
         onStart()
-        t.animateTo(1000f, tween(1000, easing = LinearEasing))
+        t.animateTo(700f, tween(700, easing = LinearEasing))
         onEnd()
     }
     Canvas(Modifier.fillMaxSize()) {
         val ms = t.value
-        val bgA = if (ms < 620f) 1f else 1f - ease((ms - 620f) / 320f)
+        val bgA = if (ms < 430f) 1f else 1f - ease((ms - 430f) / 260f)
         drawRect(pal.bg.copy(alpha = bgA))
-        val spin = ease(ms / 560f)
-        val shrink = ((ms - 480f) / 300f).coerceIn(0f, 1f)
-        val grow = 1f + 0.12f * (1f - ease(ms / 200f)) // o ícone do splash sai em 1,12×
-        val len = min(size.width, size.height) * 0.22f * grow * (1f - 0.85f * shrink * shrink)
-        val a = 1f - shrink * shrink
+        val ink = if (pal.bg.luminance() < 0.3f) pal.levels[4] else pal.levels[3]
+        val base = min(size.width, size.height) * 0.22f
+        // 1) a grade 3×3 do ícone que acabou de sair do splash, nas cores do tema, se dissolve…
+        val gridA = 1f - ease(ms / 220f)
+        if (gridA > 0f) {
+            val cell = base * 0.26f; val gap = base * 0.07f
+            val o = center - Offset(1.5f * cell + gap, 1.5f * cell + gap)
+            for (r in 0 until 3) for (k in 0 until 3) {
+                val lv = (r + k).coerceIn(0, 4).let { if (it == 0) 0 else minOf(4, it) }
+                drawRoundRect(pal.levels[lv].copy(alpha = gridA), o + Offset(k * (cell + gap), r * (cell + gap)), Size(cell, cell), CornerRadius(cell * 0.18f))
+            }
+        }
+        // 2) …no glifo da cor, que gira uma vez na simetria e encolhe para dentro da tela
+        val spin = ease(ms / 420f)
+        val shrink = ((ms - 330f) / 240f).coerceIn(0f, 1f)
+        val len = base * (0.85f + 0.15f * ease(ms / 160f)) * (1f - 0.85f * shrink * shrink)
+        val a = ease(ms / 160f) * (1f - shrink * shrink)
         if (a <= 0f) return@Canvas
         val sym = pal.glyph.symmetry.takeIf { it > 0f } ?: 90f
-        star(pal.levels[3].copy(alpha = a), center, len, turn = sym * spin, glyph = pal.glyph)
+        star(ink.copy(alpha = a), center, len, turn = sym * spin, glyph = pal.glyph)
     }
 }
 
@@ -290,16 +290,36 @@ private fun hourNow(): Float { val t = java.time.LocalTime.now(); return t.hour 
  * A luz do dia, bem de leve, no alto do Hoje: manhã fria, tarde morna, fim de tarde alaranjado, noite anil.
  * Os tons se misturam devagar entre as horas.
  */
-fun skyTint(hour: Float, dark: Boolean): Color {
-    val keys = listOf(
-        0f to Color(0xFF3C4690), 5.5f to Color(0xFF3C4690), 7.5f to Color(0xFF7FA6CC), 11f to Color(0xFF9BB4C8),
-        14f to Color(0xFFCDB98A), 17f to Color(0xFFE0A060), 19f to Color(0xFFC86A4A), 20.5f to Color(0xFF4A4E9A), 24f to Color(0xFF3C4690),
-    )
-    val i = keys.indexOfLast { it.first <= hour }.coerceIn(0, keys.size - 2)
-    val (h0, c0) = keys[i]; val (h1, c1) = keys[i + 1]
-    val c = androidx.compose.ui.graphics.lerp(c0, c1, ((hour - h0) / (h1 - h0)).coerceIn(0f, 1f))
-    return c.copy(alpha = if (dark) 0.10f else 0.07f)
+fun skyTint(hour: Float, dark: Boolean, pal: Palette): Color {
+    // a cor do próprio tema; a hora muda só a intensidade e um pouco a temperatura
+    val h = hour
+    val k = when {
+        h < 5f -> 0.025f
+        h < 8f -> 0.025f + (h - 5f) / 3f * 0.045f        // amanhece
+        h < 11f -> 0.07f - (h - 8f) / 3f * 0.03f         // manhã: alta e fria
+        h < 15f -> 0.04f                                  // meio do dia: quase nada
+        h < 18.5f -> 0.04f + (h - 15f) / 3.5f * 0.04f     // entardece
+        h < 21f -> 0.08f - (h - 18.5f) / 2.5f * 0.05f     // anoitece
+        else -> 0.03f - (h - 21f) / 3f * 0.005f
+    }
+    val warm = if (h in 15f..21f) ((h - 15f) / 6f).coerceIn(0f, 1f) else 0f
+    val c = androidx.compose.ui.graphics.lerp(androidx.compose.ui.graphics.lerp(pal.levels[2], Color.White, if (h in 5f..11f) 0.25f else 0f), pal.levels[4], warm * 0.4f)
+    return c.copy(alpha = k * (if (dark) 1f else 0.7f))
 }
 
 /** Quanto o quadrado de hoje acende como lanterna: nada até as 17 h, cresce até as 22 h. */
 fun lanternLevel(hour: Float): Float = ((hour - 17f) / 5f).coerceIn(0f, 1f)
+
+/**
+ * Tokens de motion (curadoria 4.10): poucas durações, três curvas e três molas. Posição e tamanho que podem ser
+ * interrompidos usam mola; cor e opacidade usam curva; relógios de cena são lineares com o easing no desenho.
+ */
+object M {
+    const val FAST = 120; const val QUICK = 200; const val BASE = 320; const val SLOW = 480; const val REVEAL = 720
+    val Arrive = CubicBezierEasing(0.16f, 1f, 0.3f, 1f)   // chegar: rápido no começo, assenta macio
+    val Depart = CubicBezierEasing(0.4f, 0f, 0.2f, 1f)    // sair/descer
+    val Travel = CubicBezierEasing(0.5f, 0f, 0.15f, 1f)   // atravessar a tela
+    fun <T> touch() = androidx.compose.animation.core.spring<T>(0.6f, 700f)    // toque, ponto, interruptor
+    fun <T> settle() = androidx.compose.animation.core.spring<T>(0.85f, 400f)  // painéis, entradas
+    fun <T> wobble() = androidx.compose.animation.core.spring<T>(0.55f, 300f)  // momentos de vida (estica, assenta)
+}

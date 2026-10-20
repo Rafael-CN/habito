@@ -222,7 +222,7 @@ object Motion {
     val trail = spring<Float>(dampingRatio = 0.72f, stiffness = 260f)
     const val MISSED_DOT = 0.14f // raio do ponto do "não fiz", em fração da célula
     const val STAR = 1.22f       // asterisco do marco, ponta a ponta, em fração da célula
-    const val STAR_EVERY = 9000L // o asterisco dá um giro de 60° a cada tantos ms
+    const val STAR_EVERY = 45000L // o asterisco dá um giro de 60° a cada tantos ms
     const val STAR_TURN = 700    // duração do giro
     const val STITCH = 700       // a costura se desenha
 }
