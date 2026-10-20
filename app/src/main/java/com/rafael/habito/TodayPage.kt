@@ -657,6 +657,7 @@ internal fun ActionBox(
     val short by rememberUpdatedState(onShortTap)
     val feedback by rememberUpdatedState(fb)
     val fillColor by rememberUpdatedState(fill)
+    val labelNow by rememberUpdatedState(label)
     Box(
         Modifier.fillMaxHeight()
             .graphicsLayer { val p = progress.value; val s = 1f - 0.035f * p; scaleX = s; scaleY = s }
@@ -699,9 +700,11 @@ internal fun ActionBox(
                         done = true
                         lockedUntil[0] = android.os.SystemClock.uptimeMillis() + 600
                         Sounds.holdStop(stream, 60)
+                        val before = labelNow
                         commit()
-                        // o copo fica cheio até o botão trocar de estado (a cor nova cobre), e então some
-                        delay(420)
+                        // o copo fica cheio até o botão trocar de estado de verdade (a cor nova cobre), e então some
+                        kotlinx.coroutines.withTimeoutOrNull(1500) { while (labelNow == before) delay(16) }
+                        delay(140)
                         progress.animateTo(0f, tween(180))
                     }
                     val up = waitForUpOrCancellation()
