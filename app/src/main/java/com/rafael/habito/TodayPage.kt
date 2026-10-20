@@ -417,7 +417,7 @@ internal fun Gauge(u: HabitUi) {
         val launching = LocalFx.current.launchAt != 0L
         GaugeRuler(
             n = n, target = n.toFloat(), start = "$before", end = "$streak", middle = "",
-            stagger = if (launching) 900L / n else 22L, startDelay = if (launching) 250L else 0L,
+            stagger = if (launching) 900L / n else 22L, startDelay = if (launching) 250L else 0L, sweep = true,
         )
         return
     }
@@ -433,9 +433,12 @@ internal fun Gauge(u: HabitUi) {
 }
 
 @Composable
-internal fun GaugeRuler(n: Int, target: Float, start: String, end: String, middle: String, pulse: Int = 0, stagger: Long = 22L, startDelay: Long = 0L) {
+internal fun GaugeRuler(n: Int, target: Float, start: String, end: String, middle: String, pulse: Int = 0, stagger: Long = 22L, startDelay: Long = 0L, sweep: Boolean = false) {
     val pal = Tokens
     val reduce = LocalReduceMotion.current
+    // marco: no impacto, um traço de luz atravessa a régua inteira (a régua é a linguagem do app; no lugar do anel)
+    val lt = if (sweep && !reduce) launchClock(LocalFx.current) else 0f
+    val sweepK = if (lt >= LAUNCH_RISE) ((lt - LAUNCH_RISE) / 560f) else -1f
     // Depois do feito, os últimos traços acesos pulam um a um, no ritmo dos tiques da régua (Sounds.tick).
     val bump = remember(n) { List(n) { Animatable(0f) } }
     val litNow by rememberUpdatedState(target.roundToInt())
@@ -469,7 +472,12 @@ internal fun GaugeRuler(n: Int, target: Float, start: String, end: String, middl
             for (i in 0 until n) {
                 val on = ticks[i].value
                 val end = i == 0 || i == n - 1
-                val b = bump[i].value
+                var b = bump[i].value
+                if (sweepK in 0f..1f) {
+                    val pos = (1f - (1f - sweepK) * (1f - sweepK) * (1f - sweepK)) * (size.width + 60.dp.toPx()) - 30.dp.toPx()
+                    val dx = (i * gap - pos) / 22.dp.toPx()
+                    b = maxOf(b, kotlin.math.exp(-dx * dx) * (1f - sweepK * 0.4f))
+                }
                 val h = (if (end) 12.dp.toPx() else lerp(6.dp.toPx(), 10.dp.toPx(), on)).coerceAtLeast(1f) * (1f + 1.1f * b)
                 val off = pal.line.copy(alpha = if (end) 0.9f else Alpha.tick)
                 val c = androidx.compose.ui.graphics.lerp(androidx.compose.ui.graphics.lerp(off, pal.done, on.coerceIn(0f, 1f)), pal.levels[4], b)
