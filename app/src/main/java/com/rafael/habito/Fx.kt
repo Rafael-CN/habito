@@ -59,7 +59,25 @@ const val LADDER_STEP = 55L
 class Particle(
     var x: Float, var y: Float, var vx: Float, var vy: Float, var life: Float,
     val size: Float, var rot: Float, val vr: Float, val color: Color, val glyph: Boolean,
+    val kind: Glyph = Glyph.ASTERISCO, val g: Float = 0.09f, val drag: Float = 0.965f, val phase: Float = 0f,
 )
+
+/**
+ * Cada cor derrama o que o seu número é feito: gravidade, arrasto e vida por material.
+ * Verde: quadrados e asteriscos caindo; rosa: pétalas lentas que balançam; azul: cristais que flutuam;
+ * oceano: bolhas que sobem; violeta: brilhos parados que cintilam; âmbar: brasas subindo;
+ * terracota: migalhas pesadas; grafite: traços curtos de lápis, sem gravidade.
+ */
+private fun physicsOf(k: Glyph): Triple<Float, Float, Float> = when (k) { // gravidade, arrasto, vida
+    Glyph.FLOR -> Triple(0.025f, 0.975f, 1.5f)
+    Glyph.CRISTAL -> Triple(0.012f, 0.96f, 1.4f)
+    Glyph.ESTRELA_MAR -> Triple(-0.035f, 0.955f, 1.3f)
+    Glyph.BRILHO -> Triple(0f, 0.9f, 1.3f)
+    Glyph.SOL -> Triple(-0.03f, 0.95f, 1.4f)
+    Glyph.ESPIRAL -> Triple(0.16f, 0.97f, 0.8f)
+    Glyph.LAPIS -> Triple(0f, 0.92f, 0.9f)
+    Glyph.ASTERISCO -> Triple(0.09f, 0.965f, 1.0f)
+}
 
 /** Estado do motion compartilhado entre as telas. Pulsos são contadores: cada incremento dispara a animação uma vez. */
 class FxState {
@@ -85,13 +103,16 @@ class FxState {
 
     val particles = ArrayList<Particle>()
 
-    fun burst(at: Offset, n: Int, spread: Float, colors: List<Color>) {
+    fun burst(at: Offset, n: Int, spread: Float, colors: List<Color>, kind: Glyph = Glyph.ASTERISCO) {
+        val (g, drag, life) = physicsOf(kind)
+        val lift = if (g < 0f) 0.1f else 0.4f // o que sobe não precisa de impulso para cima
         for (i in 0 until n) {
             val a = Random.nextFloat() * 2 * PI.toFloat()
-            val v = (0.6f + Random.nextFloat()) * spread
+            val v = (0.6f + Random.nextFloat()) * spread * (if (kind == Glyph.BRILHO) 1.3f else 1f)
             particles += Particle(
-                at.x, at.y, cos(a) * v, sin(a) * v - spread * 0.4f, 0.7f + Random.nextFloat() * 0.6f,
+                at.x, at.y, cos(a) * v, sin(a) * v - spread * lift, life * (0.7f + Random.nextFloat() * 0.6f),
                 2.5f + Random.nextFloat() * 4.5f, Random.nextFloat() * 6f, (Random.nextFloat() - 0.5f) * 0.2f, colors[i % colors.size], i % 5 == 0,
+                kind, g, drag, Random.nextFloat() * 6.28f,
             )
         }
         bursts++
@@ -133,7 +154,8 @@ fun FxLayer(fx: FxState, pal: Palette) {
                 val it = fx.particles.iterator()
                 while (it.hasNext()) {
                     val p = it.next()
-                    p.vx *= 0.965f.pow(dt); p.vy = p.vy * 0.965f.pow(dt) + 0.09f * dt
+                    p.vx *= p.drag.pow(dt); p.vy = p.vy * p.drag.pow(dt) + p.g * dt
+                    if (p.kind == Glyph.FLOR) p.vx += kotlin.math.sin(p.life * 6f + p.phase) * 0.04f * dt // pétala balança
                     p.x += p.vx * dt; p.y += p.vy * dt; p.rot += p.vr * dt; p.life -= 0.016f * dt
                     if (p.life <= 0f) it.remove()
                 }
@@ -197,9 +219,21 @@ fun FxLayer(fx: FxState, pal: Palette) {
         // ----- partículas
         for (q in fx.particles) {
             val a = (q.life * 1.6f).coerceIn(0f, 1f)
+            val z = q.size * density
             withTransform({ translate(q.x, q.y); rotate(q.rot * 57.3f, Offset.Zero) }) {
-                if (q.glyph) star(q.color.copy(alpha = a), Offset.Zero, q.size * 2.6f * density, glyph = pal.glyph)
-                else drawRect(q.color.copy(alpha = a), Offset(-q.size * density / 2, -q.size * density / 2), Size(q.size * density, q.size * density))
+                when {
+                    q.glyph -> star(q.color.copy(alpha = a), Offset.Zero, z * 2.6f, glyph = pal.glyph)
+                    q.kind == Glyph.FLOR -> drawOval(q.color.copy(alpha = a), Offset(-z * 0.45f, -z * 0.8f), Size(z * 0.9f, z * 1.6f))
+                    q.kind == Glyph.CRISTAL -> star(q.color.copy(alpha = a * 0.9f), Offset.Zero, z * 1.6f, glyph = Glyph.CRISTAL)
+                    q.kind == Glyph.ESTRELA_MAR -> drawCircle(q.color.copy(alpha = a * 0.8f), z * 0.55f, Offset.Zero, style = Stroke(1.2f * density))
+                    q.kind == Glyph.BRILHO -> {
+                        val tw = 0.5f + 0.5f * kotlin.math.sin(q.life * 18f + q.phase) // cintila parado
+                        star(q.color.copy(alpha = a * tw), Offset.Zero, z * 1.8f, glyph = Glyph.BRILHO)
+                    }
+                    q.kind == Glyph.SOL -> drawCircle(q.color.copy(alpha = a * (0.6f + 0.4f * kotlin.math.sin(q.life * 22f + q.phase))), z * 0.35f, Offset.Zero)
+                    q.kind == Glyph.LAPIS -> drawLine(q.color.copy(alpha = a), Offset(-z * 0.8f, z * 0.55f), Offset(z * 0.8f, -z * 0.55f), strokeWidth = 1.4f * density)
+                    else -> drawRect(q.color.copy(alpha = a), Offset(-z / 2, -z / 2), Size(z, z))
+                }
             }
         }
     }

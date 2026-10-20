@@ -208,7 +208,7 @@ fun HomeScreen(vm: HabitViewModel) {
                 scope.launch {
                     delay(LAUNCH_RISE)
                     if (cur.state.haptics) Haptics.milestone(ctx)
-                    if (fx.number != Rect.Zero) fx.burst(fx.number.center, 24, 5f * view.resources.displayMetrics.density, listOf(pal.levels[3], pal.levels[4], pal.levels[2]))
+                    if (fx.number != Rect.Zero) fx.burst(fx.number.center, 24, 5f * view.resources.displayMetrics.density, listOf(pal.levels[3], pal.levels[4], pal.levels[2]), pal.glyph)
                 }
             } else if (cur.state.haptics) Haptics.milestone(ctx)
         }
