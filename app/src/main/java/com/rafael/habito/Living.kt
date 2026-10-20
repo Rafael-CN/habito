@@ -51,6 +51,10 @@ fun rememberFrameTime(active: Boolean = true): State<Long> {
 /** O Hoje está à vista (página 0, sem folha, mês ou retrospectiva por cima): só assim o que é contínuo anda. */
 val LocalHojeActive = androidx.compose.runtime.compositionLocalOf { true }
 
+/** Caminhos reaproveitados a cada quadro (o desenho é sempre na thread principal). */
+private val scratchA = Path()
+private val scratchB = Path()
+
 /** Pétalas que caem e assentam: a hora em que cada uma nasceu. */
 class PetalState { val born = ArrayList<Long>() }
 
@@ -83,7 +87,7 @@ fun vessel(pal: Palette): Color = lerp(pal.bg, pal.ink, 0.13f)
 
 private fun DrawScope.drawMaterial(pal: Palette, t: Long, surf: Float, top: Float, bot: Float, petals: PetalState, blend: BlendMode) {
     val w = size.width; val h = bot - top
-    val c = pal.levels.drop(1) // tons 1..4
+    val c = pal.levels.subList(1, pal.levels.size) // tons 1..4
     val tf = t.toFloat()
     val d = density
     when (pal.glyph) {
@@ -133,12 +137,13 @@ private fun DrawScope.drawMaterial(pal: Palette, t: Long, surf: Float, top: Floa
         Glyph.ASTERISCO -> {
             drawRect(Brush.verticalGradient(listOf(c[2], c[1]), startY = surf + 6 * d, endY = bot), Offset(0f, surf + 6 * d), Size(w, bot), blendMode = blend)
             var x = 0f
+            val p = scratchA.apply { rewind() }
             while (x < w) {
                 val hg = (8 + rnd(x.toInt()) * 10) * d; val sw = sin(tf / 900f + x / 30f) * 3 * d
-                val p = Path().apply { moveTo(x, surf + 10 * d); quadraticBezierTo(x + sw / 2, surf + 10 * d - hg / 2, x + sw, surf + 10 * d - hg) }
-                drawPath(p, c[2], style = androidx.compose.ui.graphics.drawscope.Stroke(2f * d, cap = StrokeCap.Round), blendMode = blend)
+                p.moveTo(x, surf + 10 * d); p.quadraticBezierTo(x + sw / 2, surf + 10 * d - hg / 2, x + sw, surf + 10 * d - hg)
                 x += 4 * d
             }
+            drawPath(p, c[2], style = androidx.compose.ui.graphics.drawscope.Stroke(2f * d, cap = StrokeCap.Round), blendMode = blend)
         }
         // Âmbar: mel morno. A superfície brilha um pouco e escurece para o fundo; poucas bolhas sobem devagar.
         Glyph.SOL -> {
@@ -184,7 +189,7 @@ private fun DrawScope.drawMaterial(pal: Palette, t: Long, surf: Float, top: Floa
  */
 fun DrawScope.livingField(pal: Palette, t: Long, dark: Boolean) {
     val w = size.width; val h = size.height
-    val c = pal.levels.drop(1)
+    val c = pal.levels.subList(1, pal.levels.size)
     val tf = t.toFloat()
     val d = density
     val a = if (dark) 0.15f else 0.2f
@@ -199,7 +204,7 @@ fun DrawScope.livingField(pal: Palette, t: Long, dark: Boolean) {
         }
         // Oceano: linhas de maré.
         Glyph.ESTRELA_MAR -> for (k in 0 until 9) {
-            val p = Path(); var x = 0f
+            val p = scratchB.apply { rewind() }; var x = 0f
             while (x <= w) { val y = 50 * d + k * 44 * d + sin(x / 40f + tf / 900f + k) * 8 * d + sin(x / 17f - tf / 1300f) * 3 * d; if (x == 0f) p.moveTo(x, y) else p.lineTo(x, y); x += 8f }
             drawPath(p, c[2].copy(alpha = a * 0.6f), style = androidx.compose.ui.graphics.drawscope.Stroke(1.4f * d))
         }
@@ -249,7 +254,7 @@ fun DrawScope.livingField(pal: Palette, t: Long, dark: Boolean) {
         Glyph.ESPIRAL -> for (k in 0 until 4) {
             val yc = h * (0.18f + k * 0.22f)
             val band = 34 * d
-            val p = Path(); var x = -20f
+            val p = scratchB.apply { rewind() }; var x = -20f
             p.moveTo(x, yc + band)
             while (x <= w + 20f) { p.lineTo(x, yc + sin(x / 70f + tf / 4000f + k * 1.9f) * 10 * d); x += 10f }
             x = w + 20f

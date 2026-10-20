@@ -367,7 +367,7 @@ internal fun Hero(u: HabitUi, scroll: ScrollState, compact: Boolean = false, tim
             val d = LocalDensity.current
             androidx.compose.runtime.CompositionLocalProvider(LocalDensity provides androidx.compose.ui.unit.Density(d.density, d.fontScale.coerceAtMost(1.15f))) {
                 Box(
-                    Modifier.graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }.drawWithContent {
+                    Modifier.graphicsLayer { compositingStrategy = if (sheen in 0f..1f) androidx.compose.ui.graphics.CompositingStrategy.Offscreen else androidx.compose.ui.graphics.CompositingStrategy.Auto }.drawWithContent {
                         drawContent()
                         if (sheen in 0f..1f) {
                             val x = -size.width * 0.6f + sheen * size.width * 2.2f

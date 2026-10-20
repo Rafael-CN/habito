@@ -359,11 +359,7 @@ fun HomeScreen(vm: HabitViewModel) {
                 val p = sheet.value
                 val s = 1f - 0.05f * p; scaleX = s; scaleY = s
                 transformOrigin = TransformOrigin(0.5f, 0f)
-                renderEffect = if (Build.VERSION.SDK_INT >= 31 && desat.value > 0.01f) {
-                    android.graphics.RenderEffect.createColorFilterEffect(
-                        android.graphics.ColorMatrixColorFilter(android.graphics.ColorMatrix().apply { setSaturation(1f - 0.65f * desat.value) }),
-                    ).asComposeRenderEffect()
-                } else null
+                renderEffect = if (Build.VERSION.SDK_INT >= 31 && desat.value > 0.01f) desatEffect((desat.value * 24f).toInt()) else null
             },
         ) {
             Tabs(
@@ -766,4 +762,13 @@ private fun SettingsHost(
             }
         }
     }
+}
+
+private val desatCache = java.util.concurrent.ConcurrentHashMap<Int, androidx.compose.ui.graphics.RenderEffect>()
+
+/** A tela sem cor do não fiz, em 24 degraus guardados (Android 12+). */
+private fun desatEffect(step: Int): androidx.compose.ui.graphics.RenderEffect = desatCache.getOrPut(step) {
+    android.graphics.RenderEffect.createColorFilterEffect(
+        android.graphics.ColorMatrixColorFilter(android.graphics.ColorMatrix().apply { setSaturation(1f - 0.65f * step / 24f) }),
+    ).asComposeRenderEffect()
 }

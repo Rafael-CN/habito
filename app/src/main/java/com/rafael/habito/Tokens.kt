@@ -129,7 +129,7 @@ fun paletteFor(name: String, isDark: Boolean, paper: Boolean = false): Palette {
     )
 }
 
-val LocalPalette = staticCompositionLocalOf { Palettes.Light }
+val LocalPalette = androidx.compose.runtime.compositionLocalOf { Palettes.Light }
 
 /** Paleta do tema atual (claro ou escuro). */
 val Tokens: Palette
