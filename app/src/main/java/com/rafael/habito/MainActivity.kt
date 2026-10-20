@@ -1,5 +1,6 @@
 package com.rafael.habito
 
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.runtime.remember
 import android.appwidget.AppWidgetManager
 import android.content.Intent
@@ -42,6 +43,19 @@ class MainActivity : ComponentActivity() {
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch { runCatching { IconSwitcher.apply(app, HabitStore.load(app)) } }
     }
 
+    /** O dia pode virar com o app aberto: a cada 30 s confere se o "hoje" mudou e recarrega. */
+    private fun watchDay() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+                while (true) {
+                    delay(30_000)
+                    val u = vm.ui.value ?: continue
+                    if (u.state.today != u.today) vm.refresh()
+                }
+            }
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         reduceMotion.value = animationsOff() // "remover animações" zera a escala de animação do sistema
@@ -53,7 +67,7 @@ class MainActivity : ComponentActivity() {
         val opened = SystemClock.uptimeMillis()
         installSplashScreen().apply {
             // Com motion, a abertura é o glifo da cor (OpeningGlyph): o splash sai assim que o app desenha.
-            setKeepOnScreenCondition { animationsOff() && SystemClock.uptimeMillis() - opened < 560 }
+            setKeepOnScreenCondition { val t = SystemClock.uptimeMillis() - opened; (animationsOff() && t < 560) || (vm.ui.value == null && t < 400) } // sem flash da cor errada
             setOnExitAnimationListener { p ->
                 revealed.value = true // a tela entra enquanto a abertura se desfaz
                 // Sem animações, ou com o app já aberto, o sistema pode não criar o ícone: aí só remove.
@@ -73,6 +87,7 @@ class MainActivity : ComponentActivity() {
             setResult(RESULT_OK, Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId))
         }
         debugHooks()
+        watchDay()
 
         // Se a abertura não aparecer (retorno rápido ao app), a tela entra mesmo assim.
         lifecycleScope.launch { delay(1200); revealed.value = true }

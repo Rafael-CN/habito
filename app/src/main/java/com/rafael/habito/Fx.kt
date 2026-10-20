@@ -77,7 +77,7 @@ class FxState {
     var heatOrigin: Offset = Offset.Unspecified   // canto do primeiro quadrado do mapa da História (raiz)
     var heatStep = 0f
     var heatCell = 0f
-    var heatStart: LocalDate = LocalDate.MIN
+    var heatStart: LocalDate = LocalDate.now()
     var flight: List<FlightCell> = emptyList()
 
     val particles = ArrayList<Particle>()
@@ -161,12 +161,12 @@ fun FxLayer(fx: FxState, pal: Palette) {
             if (veil > 0f) drawRect(
                 Brush.radialGradient(
                     0f to Color.Transparent, 0.35f to Color.Black.copy(alpha = veil * 0.15f), 1f to Color.Black.copy(alpha = veil),
-                    center = c, radius = max(size.width, size.height) * 0.75f,
+                    center = c, radius = (max(size.width, size.height) * 0.75f).coerceAtLeast(1f),
                 ),
             )
             val glow = if (t < LAUNCH_RISE) rise.pow(2f) * 0.28f else 0.28f * (1f - ease(after))
             if (glow > 0f) drawCircle(
-                Brush.radialGradient(listOf(pal.levels[4].copy(alpha = glow), Color.Transparent), center = c, radius = fx.number.width * (0.7f + 0.4f * rise + after)),
+                Brush.radialGradient(listOf(pal.levels[4].copy(alpha = glow), Color.Transparent), center = c, radius = (fx.number.width * (0.7f + 0.4f * rise + after)).coerceAtLeast(1f)),
                 radius = fx.number.width * (0.7f + 0.4f * rise + after), center = c,
             )
             if (t >= LAUNCH_RISE) {
@@ -268,25 +268,13 @@ fun uptime() = SystemClock.uptimeMillis()
 object OpenOnce { @Volatile var done = false }
 
 /** Segurar para marcar: quanto tempo o dedo fica no botão até valer. */
-const val HOLD_MS = 700
+const val HOLD_MS = 600
 
 /** Para o gesto de segurar saber se vibra e se soa, e em que cor. */
 data class HoldFeedback(val haptics: Boolean, val sounds: Boolean, val palette: String)
 
 /** A sequência como ela estava no fim do dia [d] (tropeços e descansos não quebram, como no app). */
-fun streakAt(u: HabitUi, d: java.time.LocalDate): Int {
-    var n = 0
-    var x = d
-    var guard = 0
-    while (guard++ < 4000) {
-        val m = u.markOf(x)
-        if (m == Mark.DONE) n++
-        else if (!(x in u.state.tropes || u.state.isRest(x))) break
-        if (x.isBefore(u.start)) break
-        x = x.minusDays(1)
-    }
-    return n
-}
+fun streakAt(u: HabitUi, d: java.time.LocalDate): Int = u.state.streakAsOf(d)
 
 /** A hora do dia (com minutos), atualizada a cada minuto. */
 @Composable

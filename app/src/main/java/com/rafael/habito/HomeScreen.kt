@@ -147,6 +147,9 @@ fun HomeScreen(vm: HabitViewModel) {
     val histScroll = rememberScrollState()
 
     fun toast(msg: String) = Toast.makeText(ctx, msg, Toast.LENGTH_SHORT).show()
+    var ladderJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    val lastChangeToday = remember { mutableStateOf(true) }
+    val celebrated = rememberSaveable { mutableStateOf("") }
     fun buzz(kind: Int) { if (u?.state?.haptics != false) view.performHapticFeedback(kind) }
     fun sound(sfx: Sfx) { val st = u?.state ?: return; if (st.sounds) Sounds.play(ctx, st.palette, sfx) }
     val fx = LocalFx.current
@@ -158,17 +161,22 @@ fun HomeScreen(vm: HabitViewModel) {
     fun change(date: LocalDate, mark: Mark?) {
         val cur = u ?: return
         val previous = cur.markOf(date)
+        ladderJob?.cancel()
+        lastChangeToday.value = date == cur.today
         buzz(when (mark) { Mark.DONE -> HapticFeedbackConstants.CONFIRM; Mark.MISSED -> HapticFeedbackConstants.REJECT; null -> HapticFeedbackConstants.CLOCK_TICK })
         sound(when (mark) { Mark.DONE -> Sfx.FEITO; Mark.MISSED -> Sfx.NAO_FIZ; null -> Sfx.DESFAZER })
         // Motion: só hoje ganha a cena inteira (número, régua com tiques, tela sem cor no não fiz).
         if (date == cur.today && previous != mark && !reduce) {
-            val closesMilestone = !cur.weekly && cur.state.celebrate && cur.todayMark != Mark.DONE && isMilestone(cur.streak + 1)
+            val next = cur.streak + 1
+            val closesMilestone = cur.state.celebrate && cur.todayMark != Mark.DONE && celebrated.value != "${cur.today}:$next" &&
+                (if (cur.weekly) cur.doneThisWeek + 1 >= cur.goal && cur.doneThisWeek < cur.goal && isMilestone(next, true) else isMilestone(next))
             if (mark == Mark.DONE && closesMilestone) Unit
             else if (mark == Mark.DONE) {
                 fx.feito++
-                if (cur.state.sounds) scope.launch {
-                    delay(LADDER_START)
-                    repeat(LADDER) { i -> Sounds.tick(ctx, cur.state.palette, i); delay(LADDER_STEP) }
+                if (cur.state.sounds) ladderJob = scope.launch {
+                    // tempo absoluto: os tiques não escorregam do ritmo da régua
+                    val t0 = android.os.SystemClock.uptimeMillis() + LADDER_START
+                    repeat(LADDER) { i -> delay(t0 + i * LADDER_STEP - android.os.SystemClock.uptimeMillis()); Sounds.tick(ctx, cur.state.palette, i) }
                 }
             } else if (mark == Mark.MISSED) fx.naoFiz++
         }
@@ -178,14 +186,18 @@ fun HomeScreen(vm: HabitViewModel) {
     }
 
     // Marco alcançado ao marcar hoje: a sequência acende e o aparelho dá três pulsos (se "comemorar" estiver ligado).
+    // Uma vez por marco e por dia (desfazer e refazer não comemora de novo); corrigir outro dia não comemora.
     val streak = u?.streak
     val lastStreak = remember { mutableStateOf<Int?>(null) }
     LaunchedEffect(streak) {
         val before = lastStreak.value
         lastStreak.value = streak
         val cur = u
-        if (cur != null && cur.state.celebrate && streak != null && before != null && streak > before && isMilestone(streak, cur.weekly) && cur.todayMark == Mark.DONE) {
-            ripple++
+        if (cur != null && cur.state.celebrate && streak != null && before != null && streak > before && isMilestone(streak, cur.weekly) &&
+            cur.todayMark == Mark.DONE && lastChangeToday.value && celebrated.value != "${cur.today}:$streak"
+        ) {
+            celebrated.value = "${cur.today}:$streak"
+            ladderJob?.cancel()
             if (cur.state.sounds) Sounds.play(ctx, cur.state.palette, Sfx.MARCO)
             if (!reduce && pager.currentPage == 0) {
                 // Lançamento: 1,25 s de swell (véu, brilho, o número tremendo), o impacto, e só então o ano vira o glifo.
@@ -317,7 +329,7 @@ fun HomeScreen(vm: HabitViewModel) {
         // O ano vira mapa: cada quadrado do mini ano voa até o seu dia no mapa da História.
         val cur = u
         val g = fx.miniGrid
-        if (cur != null && !reduce && g != Rect.Zero && pager.currentPage == 0) {
+        if (cur != null && !reduce && g != Rect.Zero && pager.currentPage == 0 && fx.flightAt == 0L && !pager.isScrollInProgress) {
             val weeks = 20
             val gap = 3f * view.resources.displayMetrics.density
             val cell = (g.width - gap * (weeks - 1)) / weeks

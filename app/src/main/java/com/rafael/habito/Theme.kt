@@ -65,6 +65,7 @@ fun HabitTheme(palette: String = "verde", mode: Int = 0, paper: Boolean = false,
         lastName.value = palette
         from.value = shown.value
         val origin = InkFx.origin
+        inkFrom.value = null
         if (!reduce && origin != null && InkFx.armed) {
             inkFrom.value = origin; InkFx.origin = null
             swap.snapTo(1f)

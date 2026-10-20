@@ -221,7 +221,13 @@ internal fun Hero(u: HabitUi, scroll: ScrollState, compact: Boolean = false, tim
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
     val scrubBack = remember { Animatable(0f) }
-    val maxBack = remember(u.today, u.start) { java.time.temporal.ChronoUnit.DAYS.between(u.start, u.today).toFloat().coerceAtLeast(0f) }
+    val scrubJob = remember { arrayOfNulls<kotlinx.coroutines.Job>(1) }
+    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { fx.scrub = 0f } }
+    // até o primeiro registro (não a janela do mapa); sem registro, o gesto nem existe
+    val maxBack = remember(u.today, u.state.done, u.state.missed) {
+        val first = (u.state.done + u.state.missed).minOrNull()
+        if (first == null) 0f else java.time.temporal.ChronoUnit.DAYS.between(first, u.today).toFloat().coerceAtLeast(0f)
+    }
     val shown = if (fx.scrub >= 1f) streakAt(u, u.today.minusDays(fx.scrub.toLong())) else u.streak
     // Líquido: a superfície inclina com o celular e balança com a rolagem, o arrasto e o feito, numa mola amortecida.
     val tilt = remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
@@ -273,13 +279,13 @@ internal fun Hero(u: HabitUi, scroll: ScrollState, compact: Boolean = false, tim
                 transformOrigin = TransformOrigin(0f, 1f)
             }.onGloballyPositioned { fx.number = it.boundsInRoot() }
                 .then(
-                    if (u.weekly) Modifier else Modifier.pointerInput(maxBack) {
+                    if (u.weekly || maxBack <= 0f) Modifier else Modifier.pointerInput(maxBack) {
                         val step = 14.dp.toPx()
                         detectHorizontalDragGestures(
-                            onDragStart = { scope.launch { scrubBack.stop() } },
+                            onDragStart = { scrubJob[0]?.cancel() },
                             onDragEnd = {
                                 val from = fx.scrub
-                                if (from > 0f) scope.launch {
+                                if (from > 0f) scrubJob[0] = scope.launch {
                                     scrubBack.snapTo(from)
                                     scrubBack.animateTo(0f, tween((220 + from * 9f).toInt().coerceAtMost(900), easing = FastOutSlowInEasing)) { fx.scrub = value }
                                     if (feedbackOn(u)) view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
@@ -332,7 +338,7 @@ internal fun Hero(u: HabitUi, scroll: ScrollState, compact: Boolean = false, tim
                 style = Type.caption, color = pal.text2, maxLines = 1, softWrap = false,
                 modifier = Modifier.graphicsLayer { alpha = dateA },
             )
-            Text(unitLabel(u, "\n"), style = Type.title.copy(fontWeight = FontWeight.Medium, lineHeight = 20.sp), color = pal.ink)
+            Text(if (ago >= 1) (if (shown == 1) "dia\nseguido" else "dias\nseguidos") else unitLabel(u, "\n"), style = Type.title.copy(fontWeight = FontWeight.Medium, lineHeight = 20.sp), color = pal.ink)
         }
     }
     ReturnLine(u)
@@ -413,7 +419,7 @@ internal fun GaugeRuler(n: Int, target: Float, start: String, end: String, middl
     val ticks = remember(n) { List(n) { Animatable(0f) } }
     val lit = target.roundToInt()
     LaunchedEffect(lit, n) {
-        val changed = ticks.indices.filter { (it < lit) != (ticks[it].targetValue > 0.5f) }
+        val changed = ticks.indices.filter { (it < lit) != (ticks[it].targetValue > 0.5f) || (!ticks[it].isRunning && ticks[it].value != (if (it < lit) 1f else 0f)) }
         changed.forEachIndexed { k, i ->
             val on = if (i < lit) 1f else 0f
             launch {
@@ -609,6 +615,8 @@ internal fun ActionBox(
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
     val progress = remember { Animatable(0f) }
+    val holdJob = remember { arrayOfNulls<kotlinx.coroutines.Job>(1) }
+    val lockedUntil = remember { longArrayOf(0L) }
     val commit by rememberUpdatedState(onClick)
     val short by rememberUpdatedState(onShortTap)
     val feedback by rememberUpdatedState(fb)
@@ -632,19 +640,28 @@ internal fun ActionBox(
             }
             .semantics(mergeDescendants = true) { role = Role.Button; onClick(label) { commit(); true } }
             .pointerInput(Unit) {
+                val hold = holdMillis(view.context)
                 awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
+                    awaitFirstDown(requireUnconsumed = false)
+                    // logo depois de marcar, outro toque não faz nada (sem desfazer por engano)
+                    if (android.os.SystemClock.uptimeMillis() < lockedUntil[0]) { waitForUpOrCancellation(); return@awaitEachGesture }
+                    holdJob[0]?.cancel()
                     val f = feedback
-                    val stream = if (f.sounds) Sounds.holdStart(ctx, f.palette) else 0
+                    var stream = 0
                     var done = false
-                    val started = android.os.SystemClock.uptimeMillis()
-                    val job = scope.launch {
-                        var ticks = 0
-                        progress.animateTo(1f, tween(((1f - progress.value) * HOLD_MS).toInt(), easing = LinearEasing)) {
-                            val q = (value * 3f).toInt()
-                            if (q > ticks && q < 3) { ticks = q; if (f.haptics) view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK) }
+                    holdJob[0] = scope.launch {
+                        progress.snapTo(0f)
+                        // 120 ms de intenção: o copo já se mexe, mas som e vibração só se o dedo ficar
+                        progress.animateTo(0.08f, tween(INTENT_MS, easing = LinearEasing))
+                        if (f.sounds) stream = Sounds.holdStart(ctx, f.palette)
+                        if (f.haptics) view.performHapticFeedback(gestureStart())
+                        var t1 = false; var t2 = false
+                        progress.animateTo(1f, tween(hold - INTENT_MS, easing = LinearEasing)) {
+                            if (!t1 && value >= 0.5f) { t1 = true; if (f.haptics) view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK) }
+                            if (!t2 && value >= 0.8f) { t2 = true; if (f.haptics) view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK) }
                         }
                         done = true
+                        lockedUntil[0] = android.os.SystemClock.uptimeMillis() + 600
                         Sounds.holdStop(stream, 60)
                         commit()
                         // o copo fica cheio até o botão trocar de estado (a cor nova cobre), e então some
@@ -653,12 +670,11 @@ internal fun ActionBox(
                     }
                     val up = waitForUpOrCancellation()
                     if (!done) {
-                        job.cancel()
+                        holdJob[0]?.cancel()
                         Sounds.holdStop(stream, 140)
-                        if (up != null && android.os.SystemClock.uptimeMillis() - started < 180) short()
-                        scope.launch { progress.animateTo(0f, spring(0.62f, 380f)) }
+                        if (up != null) short() // soltou antes: o rótulo pede para segurar
+                        holdJob[0] = scope.launch { progress.animateTo(0f, spring(0.62f, 380f)) }
                     }
-                    down.consume()
                 }
             },
         content = content,
@@ -942,3 +958,14 @@ internal fun waveAt(back: Int): Float =
     else (LADDER_START + (LADDER - 1) * LADDER_STEP).toFloat() + Math.pow((back - LADDER + 1).toDouble(), 0.8).toFloat() * 34f
 
 private fun feedbackOn(u: HabitUi) = u.state.haptics
+
+/** Intenção antes de o segurar soar e vibrar: um toque que vira rolagem fica mudo. */
+internal const val INTENT_MS = 120
+
+/** Quanto segurar: 600 ms, ou mais se o sistema estiver com o "tocar e segurar" mais lento (acessibilidade). */
+internal fun holdMillis(ctx: android.content.Context): Int =
+    maxOf(HOLD_MS, (android.view.ViewConfiguration.getLongPressTimeout() * 1.4f).toInt())
+
+/** Começo de gesto: a constante própria no Android 14+, um tique antes disso. */
+internal fun gestureStart(): Int =
+    if (android.os.Build.VERSION.SDK_INT >= 34) HapticFeedbackConstants.GESTURE_START else HapticFeedbackConstants.CLOCK_TICK

@@ -255,6 +255,9 @@ data class HabitState(
         else -> countBack(today.minusDays(1))
     }
 
+    /** A sequência como estava no fim do dia [d] (descanso e tropeço não quebram). Para voltar no tempo. */
+    fun streakAsOf(d: LocalDate): Int = if (d in done || bridges(d)) countBack(d) else 0
+
     /** Tamanho da sequência que termina em [d] (0 se o dia não foi feito). */
     fun streakEndingAt(d: LocalDate): Int = if (d in done) countBack(d) else 0
 
