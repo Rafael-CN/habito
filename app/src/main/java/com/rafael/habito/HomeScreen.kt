@@ -156,7 +156,7 @@ fun HomeScreen(vm: HabitViewModel) {
     // Não fiz: a tela perde um pouco de cor e volta (Android 12+).
     val desat = remember { Animatable(0f) }
     LaunchedEffect(fx.naoFiz) { if (fx.naoFiz > 0 && !reduce) { desat.animateTo(1f, tween(380)); desat.animateTo(0f, tween(900)) } }
-    fun tick() { buzz(HapticFeedbackConstants.CLOCK_TICK); sound(Sfx.TOQUE) }
+    fun tick() = buzz(HapticFeedbackConstants.CLOCK_TICK)
 
     fun change(date: LocalDate, mark: Mark?) {
         val cur = u ?: return
@@ -214,7 +214,7 @@ fun HomeScreen(vm: HabitViewModel) {
 
     // Com "Sons" ligado, os sons da cor ficam carregados antes do primeiro toque.
     val soundPalette = u?.state?.let { if (it.sounds) it.palette else null }
-    LaunchedEffect(soundPalette) { if (soundPalette != null) Sounds.prepare(ctx, soundPalette) }
+    LaunchedEffect(soundPalette) { if (soundPalette != null) kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { Sounds.prepare(ctx, soundPalette) } }
 
     val selectedMark = selected?.let { u?.markOf(it) }
     LaunchedEffect(selected, selectedMark) { if (selected != null) { delay(3600); selected = null } }
@@ -397,7 +397,7 @@ fun HomeScreen(vm: HabitViewModel) {
                         map = {
                             YearPanel(u, selected, annoBack, ripple, period, onRect = { yearRect = it }, onShare = { share("ano") },
                                 onMonthLabel = { selected = null; tick(); monthFrom = yearRect; month = it },
-                                onDay = { d -> if (d == selected) change(d, Cal.next(u.markOf(d))) else { selected = d; tick() } })
+                                onDay = { d -> if (d == selected) change(d, Cal.next(u.markOf(d))) else { selected = d; tick(); sound(Sfx.TOQUE) } })
                         },
                         onMonth = { m, r -> tick(); monthFrom = r; month = m },
                         onRetro = { m, r -> tick(); retroFrom = r; retro = m },
@@ -493,7 +493,13 @@ fun HomeScreen(vm: HabitViewModel) {
         var showOpen by remember { mutableStateOf(!OpenOnce.done && !reduce) }
         if (showOpen && LocalRevealed.current && u != null) OpeningGlyph(
             pal,
-            onStart = { OpenOnce.done = true; fx.openAt = uptime(); if (u.state.sounds) Sounds.play(ctx, u.state.palette, Sfx.ABRIR) },
+            onStart = {
+                OpenOnce.done = true; fx.openAt = uptime()
+                val prefs = ctx.getSharedPreferences("motion", android.content.Context.MODE_PRIVATE)
+                val last = prefs.getLong("abrir_at", 0L); val now = System.currentTimeMillis()
+                val newDay = java.time.Instant.ofEpochMilli(last).atZone(java.time.ZoneId.systemDefault()).toLocalDate() != java.time.LocalDate.now()
+                if (u.state.sounds && (newDay || now - last > 4 * 3600_000L)) { Sounds.play(ctx, u.state.palette, Sfx.ABRIR); prefs.edit().putLong("abrir_at", now).apply() }
+            },
             onEnd = { showOpen = false },
         )
     }

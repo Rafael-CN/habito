@@ -57,9 +57,11 @@ object Sounds {
         var v = Random.nextInt(row.size)
         if (row.size > 1 && v == last[sfx.ordinal]) v = (v + 1 + Random.nextInt(row.size - 1)) % row.size
         last[sfx.ordinal] = v
-        // o marco começa por cima do feito que o trouxe: o feito sai de cena
-        if (sfx == Sfx.MARCO && lastStream != 0) pool.stop(lastStream)
-        start(row[v], if (sfx == Sfx.MARCO) 1 else 0)
+        // o marco começa por cima do feito que o trouxe: o feito baixa numa rampa (sem corte seco)
+        if (sfx == Sfx.MARCO && lastStream != 0) duck(lastStream, 0.35f, 120)
+        // a abertura não toca com o celular no vibrar (abrir o app numa reunião)
+        if (sfx == Sfx.ABRIR && vibrating(ctx)) return
+        start(row[v], if (sfx == Sfx.MARCO) 1 else 0, detune = sfx == Sfx.TOQUE)
     }
 
     /** O traço [i] (0..6) da régua acendendo. */
@@ -83,7 +85,7 @@ object Sounds {
     /** Para o som de segurar: escoando (soltou antes) ou num corte curto (o feito assume). */
     fun holdStop(stream: Int, fadeMs: Long) {
         if (stream == 0) return
-        val h = android.os.Handler(android.os.Looper.getMainLooper())
+        val h = main
         val steps = 6
         for (i in 1..steps) h.postDelayed({
             val v = 0.85f * (1f - i / steps.toFloat())
@@ -96,20 +98,29 @@ object Sounds {
     private var lastScrub = 0L
     @Synchronized fun scrubTick(ctx: Context, palette: String) {
         val now = android.os.SystemClock.uptimeMillis()
-        if (now - lastScrub < 45 || silent(ctx)) return
+        if (now - lastScrub < 70 || silent(ctx)) return
         lastScrub = now
         prepare(ctx, palette)
         val id = ids.getOrNull(Sfx.TICK.ordinal)?.firstOrNull() ?: return
-        if (id in loaded) pool.play(id, 0.28f, 0.28f, 0, 0, 1f)
+        if (id in loaded) pool.play(id, 0.32f, 0.32f, 0, 0, 0.985f + Random.nextFloat() * 0.03f)
     }
 
-    private fun start(id: Int, priority: Int) {
+    private fun start(id: Int, priority: Int, detune: Boolean = false) {
         if (id !in loaded) { pending = id; return }
-        // cada toque um pouco diferente: até 1 dB de volume e um leve deslocamento de lado
+        // cada toque um pouco diferente: até 1 dB de volume; o toque solto ainda varia ±0,5% de altura
         val g = 1f - Random.nextFloat() * 0.11f
-        val side = (Random.nextFloat() - 0.5f) * 0.16f
-        lastStream = pool.play(id, g * (1f - side), g * (1f + side), priority, 0, 1f)
+        val rate = if (detune) 0.995f + Random.nextFloat() * 0.01f else 1f
+        lastStream = pool.play(id, g, g, priority, 0, rate)
     }
+
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
+
+    /** Baixa o volume de um stream até [to] em [ms], em 6 passos. */
+    private fun duck(stream: Int, to: Float, ms: Long) {
+        for (i in 1..6) main.postDelayed({ val v = 1f - (1f - to) * i / 6f; pool.setVolume(stream, v, v) }, ms * i / 6)
+    }
+
+    private fun vibrating(ctx: Context) = ctx.getSystemService(AudioManager::class.java).ringerMode == AudioManager.RINGER_MODE_VIBRATE
 
     @Synchronized private fun onLoaded(p: SoundPool, id: Int, status: Int) {
         if (status != 0) return
