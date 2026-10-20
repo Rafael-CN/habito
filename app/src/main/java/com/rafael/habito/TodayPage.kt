@@ -1,5 +1,15 @@
 package com.rafael.habito
 
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.Role
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.rememberUpdatedState
 import android.Manifest
 import android.appwidget.AppWidgetManager
@@ -206,6 +216,48 @@ internal fun Hero(u: HabitUi, scroll: ScrollState, compact: Boolean = false, tim
     val width = 68f + 42f * s1 + 57f * open.value + 40f * scrollT - 4f * deflate.value
     val weight = 650f + 170f * s1 - 350f * open.value - 260f * scrollT - 360f * deflate.value
     val face = heroFace(width, weight)
+    // Voltar no tempo: arrastar o número para a esquerda volta dia por dia; soltar corre de volta até hoje.
+    val view = androidx.compose.ui.platform.LocalView.current
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+    val scrubBack = remember { Animatable(0f) }
+    val maxBack = remember(u.today, u.start) { java.time.temporal.ChronoUnit.DAYS.between(u.start, u.today).toFloat().coerceAtLeast(0f) }
+    val shown = if (fx.scrub >= 1f) streakAt(u, u.today.minusDays(fx.scrub.toLong())) else u.streak
+    // Líquido: a superfície inclina com o celular e balança com a rolagem, o arrasto e o feito, numa mola amortecida.
+    val tilt = remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
+    val gravity = remember { floatArrayOf(0f) }
+    val kick = remember { floatArrayOf(0f) }
+    if (!reduce && time != null) {
+        androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
+            val sm = ctx.getSystemService(android.hardware.SensorManager::class.java)
+            val sensor = sm?.getDefaultSensor(android.hardware.Sensor.TYPE_GRAVITY) ?: sm?.getDefaultSensor(android.hardware.Sensor.TYPE_ACCELEROMETER)
+            val l = object : android.hardware.SensorEventListener {
+                override fun onSensorChanged(e: android.hardware.SensorEvent) {
+                    val deg = Math.toDegrees(kotlin.math.atan2(e.values[0].toDouble(), e.values[1].toDouble().coerceAtLeast(0.5))).toFloat()
+                    gravity[0] = gravity[0] * 0.8f + (deg * 0.55f).coerceIn(-7f, 7f) * 0.2f
+                }
+                override fun onAccuracyChanged(s: android.hardware.Sensor?, a: Int) {}
+            }
+            if (sensor != null) sm.registerListener(l, sensor, android.hardware.SensorManager.SENSOR_DELAY_UI)
+            onPauseOrDispose { sm?.unregisterListener(l) }
+        }
+        LaunchedEffect(fx.feito) { if (fx.feito > 0) kick[0] += 2.4f }
+        LaunchedEffect(Unit) {
+            var a = 0f; var v = 0f; var lastScroll = scroll.value.toFloat(); var lastVel = 0f
+            var last = withFrameNanos { it }
+            while (true) {
+                withFrameNanos { now ->
+                    val dt = ((now - last) / 1e9f).coerceIn(0.001f, 0.05f); last = now
+                    val sv = (scroll.value - lastScroll) / dt; lastScroll = scroll.value.toFloat()
+                    val acc = (sv - lastVel); lastVel = sv
+                    v += (-(a - gravity[0]) * 55f - v * 7.5f) * dt + (-acc * 0.0009f) + kick[0] * 30f * dt
+                    kick[0] *= 0.6f
+                    a = (a + v * dt).coerceIn(-9f, 9f)
+                    tilt.floatValue = a
+                }
+            }
+        }
+    }
     Row(Modifier.fillMaxWidth().padding(top = if (compact) 10.dp else 18.dp), verticalAlignment = Alignment.Bottom) {
         Box(
             Modifier.offset(x = (-4).dp).graphicsLayer {
@@ -219,7 +271,33 @@ internal fun Hero(u: HabitUi, scroll: ScrollState, compact: Boolean = false, tim
                 }
                 alpha = (1f - 0.85f * t) * (1f - 0.6f * open.value)
                 transformOrigin = TransformOrigin(0f, 1f)
-            }.onGloballyPositioned { fx.number = it.boundsInRoot() },
+            }.onGloballyPositioned { fx.number = it.boundsInRoot() }
+                .then(
+                    if (u.weekly) Modifier else Modifier.pointerInput(maxBack) {
+                        val step = 14.dp.toPx()
+                        detectHorizontalDragGestures(
+                            onDragStart = { scope.launch { scrubBack.stop() } },
+                            onDragEnd = {
+                                val from = fx.scrub
+                                if (from > 0f) scope.launch {
+                                    scrubBack.snapTo(from)
+                                    scrubBack.animateTo(0f, tween((220 + from * 9f).toInt().coerceAtMost(900), easing = FastOutSlowInEasing)) { fx.scrub = value }
+                                    if (feedbackOn(u)) view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                }
+                            },
+                            onDragCancel = { fx.scrub = 0f },
+                        ) { change, dx ->
+                            change.consume()
+                            val before = fx.scrub.toInt()
+                            fx.scrub = (fx.scrub - dx / step).coerceIn(0f, maxBack)
+                            kick[0] += dx * 0.012f // o líquido sente o arrasto
+                            if (fx.scrub.toInt() != before) {
+                                if (u.state.haptics) view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                if (u.state.sounds) Sounds.scrubTick(ctx, u.state.palette)
+                            }
+                        }
+                    },
+                ),
         ) {
             val d = LocalDensity.current
             androidx.compose.runtime.CompositionLocalProvider(LocalDensity provides androidx.compose.ui.unit.Density(d.density, d.fontScale.coerceAtMost(1.15f))) {
@@ -238,18 +316,24 @@ internal fun Hero(u: HabitUi, scroll: ScrollState, compact: Boolean = false, tim
                         }
                     },
                 ) {
-                    Box(if (time != null) Modifier.materialFill(pal, { level }, { time.value }, petals) else Modifier) {
+                    Box(if (time != null) Modifier.materialFill(pal, { level }, { time.value }, petals, { tilt.floatValue }) else Modifier) {
                         val base = if (compact) Type.hero.copy(fontSize = 128.sp, lineHeight = 118.sp, letterSpacing = (-5.5).sp) else Type.hero
-                        RollingNumber("${u.streak}", if (time != null) vessel(pal) else pal.ink, base.copy(fontFamily = face))
+                        RollingNumber("$shown", if (time != null) vessel(pal) else pal.ink, base.copy(fontFamily = face))
                     }
                 }
             }
         }
-        Text(
-            unitLabel(u, "\n"),
-            style = Type.title.copy(fontWeight = FontWeight.Medium, lineHeight = 20.sp), color = pal.ink,
-            modifier = Modifier.padding(start = 14.dp, bottom = 16.dp),
-        )
+        Column(Modifier.padding(start = 14.dp, bottom = 16.dp)) {
+            // voltando no tempo, a data aparece acima do rótulo, sem empurrar nada
+            val ago = fx.scrub.toInt()
+            val dateA by animateFloatAsState(if (ago >= 1) 1f else 0f, tween(160), label = "ago")
+            Text(
+                if (ago >= 1) "há $ago ${if (ago == 1) "dia" else "dias"} · ${u.today.minusDays(ago.toLong()).format(DAY_MONTH)}" else " ",
+                style = Type.caption, color = pal.text2, maxLines = 1, softWrap = false,
+                modifier = Modifier.graphicsLayer { alpha = dateA },
+            )
+            Text(unitLabel(u, "\n"), style = Type.title.copy(fontWeight = FontWeight.Medium, lineHeight = 20.sp), color = pal.ink)
+        }
     }
     ReturnLine(u)
 }
@@ -402,7 +486,7 @@ internal fun TodayPanel(u: HabitUi, ripple: Int, onDone: () -> Unit, onSkip: () 
             style = Type.title.copy(fontWeight = FontWeight.Medium), color = pal.ink,
         )
         Spacer(Modifier.height(14.dp))
-        Actions(u.todayMark, u.state.doneAt, onDone, onSkip)
+        Actions(u.todayMark, u.state.doneAt, onDone, onSkip, HoldFeedback(u.state.haptics, u.state.sounds, u.state.palette))
         Spacer(Modifier.height(18.dp))
         WeekStrip(u, ripple, onDay)
     }
@@ -415,7 +499,10 @@ internal fun TodayPanel(u: HabitUi, ripple: Int, onDone: () -> Unit, onSkip: () 
  * Tocar no bloco expandido desfaz.
  */
 @Composable
-internal fun Actions(mark: Mark?, doneAt: Long, onDone: () -> Unit, onSkip: () -> Unit) {
+internal fun Actions(mark: Mark?, doneAt: Long, onDone: () -> Unit, onSkip: () -> Unit, fb: HoldFeedback = HoldFeedback(false, false, "verde")) {
+    // Um toque rápido não marca: o rótulo pede para segurar por um instante.
+    var hint by remember { mutableStateOf<Int?>(null) } // 0 = não fiz, 1 = feito
+    LaunchedEffect(hint) { if (hint != null) { delay(1600); hint = null } }
     val pal = Tokens
     val reduce = LocalReduceMotion.current
     val share = when (mark) { Mark.DONE -> 1f; Mark.MISSED -> 0f; null -> 2f / 3f }
@@ -443,7 +530,9 @@ internal fun Actions(mark: Mark?, doneAt: Long, onDone: () -> Unit, onSkip: () -
             // Não fiz
             ActionBox(
                 onSkip,
-                Modifier
+                fill = if (mark == Mark.MISSED) Tokens.ink.copy(alpha = 0.14f) else Tokens.miss.copy(alpha = 0.22f), fb = fb,
+                label = if (mark == Mark.MISSED) "Desfazer não fiz" else "Não fiz", onShortTap = { hint = 0 },
+                modifier = Modifier
                     .graphicsLayer { alpha = ((1f - f) * 3f).coerceIn(0f, 1f) }
                     .border(if (mark == Mark.MISSED) 1.5.dp else 1.dp, missBorder, RoundedCornerShape(Radius.control))
                     .background(missBg),
@@ -451,16 +540,23 @@ internal fun Actions(mark: Mark?, doneAt: Long, onDone: () -> Unit, onSkip: () -
                 Row(Modifier.align(Alignment.CenterStart).padding(start = 16.dp).wrapContentWidth(Alignment.Start, unbounded = true), verticalAlignment = Alignment.CenterVertically) {
                     Icon(painterResource(R.drawable.ic_x), null, Modifier.size(16.dp), tint = missFg)
                     Spacer(Modifier.width(10.dp))
-                    RollingLabel(if (mark == Mark.MISSED) "Não fiz hoje" else "Não fiz", Type.bodyL.copy(fontWeight = FontWeight.SemiBold), missFg)
+                    RollingLabel(if (hint == 0) "Segure" else if (mark == Mark.MISSED) "Não fiz hoje" else "Não fiz", Type.bodyL.copy(fontWeight = FontWeight.SemiBold), missFg)
                 }
                 Canvas(Modifier.align(Alignment.CenterEnd).padding(end = 14.dp).size(6.dp).graphicsLayer { scaleX = dot; scaleY = dot }) { drawCircle(pal.miss) }
             }
             // Marcar feito
-            ActionBox(onDone, Modifier.graphicsLayer { alpha = (f * 3f).coerceIn(0f, 1f) }.background(doneBg)) {
+            ActionBox(
+                onDone, fill = if (mark == Mark.DONE) Tokens.bg.copy(alpha = 0.22f) else Tokens.done, fb = fb,
+                label = if (mark == Mark.DONE) "Desfazer feito" else "Marcar feito", onShortTap = { hint = 1 },
+                modifier = Modifier.graphicsLayer { alpha = (f * 3f).coerceIn(0f, 1f) }.background(doneBg),
+            ) {
                 Row(Modifier.align(Alignment.CenterStart).padding(start = 16.dp).wrapContentWidth(Alignment.Start, unbounded = true), verticalAlignment = Alignment.CenterVertically) {
                     CheckMark(doneFg, check.value)
                     Spacer(Modifier.width(10.dp))
-                    RollingLabel(if (mark == Mark.DONE) "Feito hoje" else "Marcar feito", Type.bodyL.copy(fontWeight = FontWeight.SemiBold), doneFg)
+                    RollingLabel(
+                        if (hint == 1) (if (mark == Mark.DONE) "Segure para desfazer" else "Segure para marcar") else if (mark == Mark.DONE) "Feito hoje" else "Marcar feito",
+                        Type.bodyL.copy(fontWeight = FontWeight.SemiBold), doneFg,
+                    )
                 }
                 val sub by animateFloatAsState(if (mark == Mark.DONE && time != null) 0.85f else 0f, motion(200), label = "sub")
                 if (time != null) Text(
@@ -498,14 +594,73 @@ internal fun CheckMark(color: Color, progress: Float) {
     }
 }
 
+/**
+ * Um dos dois botões do dia. Marcar (e desmarcar) é segurar por [HOLD_MS]: o botão se enche como um copo a partir
+ * da esquerda, afunda de leve, dá dois toques curtos no caminho e um som baixo cresce junto. Soltar antes escoa
+ * de volta. Leitor de tela: o toque duplo vale direto.
+ */
 @Composable
-internal fun ActionBox(onClick: () -> Unit, modifier: Modifier, content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit) {
-    val press = remember { MutableInteractionSource() }
-    val pressed by press.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed && !LocalReduceMotion.current) 0.95f else 1f, if (pressed) Motion.press else spring(0.45f, 700f), label = "press")
+internal fun ActionBox(
+    onClick: () -> Unit, fill: Color, fb: HoldFeedback, label: String, onShortTap: () -> Unit, modifier: Modifier,
+    content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit,
+) {
+    val reduce = LocalReduceMotion.current
+    val view = androidx.compose.ui.platform.LocalView.current
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+    val progress = remember { Animatable(0f) }
+    val commit by rememberUpdatedState(onClick)
+    val short by rememberUpdatedState(onShortTap)
+    val feedback by rememberUpdatedState(fb)
+    val fillColor by rememberUpdatedState(fill)
     Box(
-        Modifier.fillMaxHeight().scale(scale).clip(RoundedCornerShape(Radius.control)).then(modifier)
-            .clickable(press, indication = null, onClick = onClick),
+        Modifier.fillMaxHeight()
+            .graphicsLayer { val p = progress.value; val s = 1f - 0.035f * p; scaleX = s; scaleY = s }
+            .clip(RoundedCornerShape(Radius.control)).then(modifier)
+            .drawBehind {
+                val p = progress.value
+                if (p <= 0f) return@drawBehind
+                val e = 1f - (1f - p) * (1f - p)
+                val x = size.width * e
+                val wob = if (reduce) 0f else 4.dp.toPx() * (1f - p)
+                val path = androidx.compose.ui.graphics.Path().apply {
+                    moveTo(0f, 0f); lineTo(x + wob, 0f)
+                    quadraticBezierTo(x - wob, size.height / 2, x + wob, size.height)
+                    lineTo(0f, size.height); close()
+                }
+                drawPath(path, fillColor)
+            }
+            .semantics(mergeDescendants = true) { role = Role.Button; onClick(label) { commit(); true } }
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val f = feedback
+                    val stream = if (f.sounds) Sounds.holdStart(ctx, f.palette) else 0
+                    var done = false
+                    val started = android.os.SystemClock.uptimeMillis()
+                    val job = scope.launch {
+                        var ticks = 0
+                        progress.animateTo(1f, tween(((1f - progress.value) * HOLD_MS).toInt(), easing = LinearEasing)) {
+                            val q = (value * 3f).toInt()
+                            if (q > ticks && q < 3) { ticks = q; if (f.haptics) view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK) }
+                        }
+                        done = true
+                        Sounds.holdStop(stream, 60)
+                        commit()
+                        // o copo fica cheio até o botão trocar de estado (a cor nova cobre), e então some
+                        delay(420)
+                        progress.animateTo(0f, tween(180))
+                    }
+                    val up = waitForUpOrCancellation()
+                    if (!done) {
+                        job.cancel()
+                        Sounds.holdStop(stream, 140)
+                        if (up != null && android.os.SystemClock.uptimeMillis() - started < 180) short()
+                        scope.launch { progress.animateTo(0f, spring(0.62f, 380f)) }
+                    }
+                    down.consume()
+                }
+            },
         content = content,
     )
 }
@@ -538,6 +693,9 @@ internal fun WeekStrip(u: HabitUi, ripple: Int, onDay: (LocalDate) -> Unit) {
                     val was = wasMissed.value; wasMissed.value = mark == Mark.MISSED
                     if (isToday && mark == Mark.MISSED && !was && !reduceW) { drop.snapTo(0f); drop.animateTo(1f, spring(0.42f, 420f)) }
                 }
+                val hourNow = rememberHour()
+                val lantern = if (isToday && mark == null && !u.state.isRest(d) && !reduceW) lanternLevel(hourNow) else 0f
+                val glow = if (lantern > 0f) callBreath() else 0f
                 val rise = remember { Animatable(1f) }
                 LaunchedEffect(fxw.openAt) { if (fxw.openAt > 0 && !reduceW) { rise.snapTo(0f); delay(560L + k * 40L); rise.animateTo(1f, tween(360, easing = FastOutSlowInEasing)) } }
                 val trope = d in u.state.tropes
@@ -570,6 +728,14 @@ internal fun WeekStrip(u: HabitUi, ripple: Int, onDay: (LocalDate) -> Unit) {
                 ) {
                     Canvas(Modifier.fillMaxSize()) {
                         val r = CornerRadius(Radius.cell.toPx())
+                        // à noite, hoje ainda pendente acende como uma lanterna que respira
+                        if (lantern > 0f) drawCircle(
+                            androidx.compose.ui.graphics.Brush.radialGradient(
+                                listOf(pal.gold.copy(alpha = (0.10f + 0.12f * glow) * lantern), Color.Transparent),
+                                center = center, radius = size.width * (1.1f + 0.25f * glow),
+                            ),
+                            radius = size.width * (1.1f + 0.25f * glow), center = center,
+                        )
                         if (gesture.value < 1f) gestureFill(pal.gesture, gesture.value, pal.levels[0], pal.levels[level], r.x)
                         else drawRoundRect(color, cornerRadius = r)
                         if (scar) stitch(pal, Offset.Zero, size.width, size.height, 6.dp.toPx(), vertical = false)
@@ -639,11 +805,16 @@ internal fun HojePage(
     val time = rememberFrameTime()
     val pal = Tokens
     val dark = pal.bg.red < 0.5f
+    val sky = skyTint(rememberHour(), dark)
     Box(Modifier.fillMaxSize()) {
     // O campo vivo: atrás do número, some ao rolar.
     androidx.compose.foundation.Canvas(
         Modifier.fillMaxWidth().height(460.dp).graphicsLayer { alpha = (1f - scroll.value / 500f).coerceIn(0f, 1f); translationY = -scroll.value * 0.4f },
-    ) { livingField(pal, time.value, dark) }
+    ) {
+        // a luz do dia, quase nada, por trás do campo vivo
+        drawRect(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(sky, Color.Transparent), startY = 0f, endY = size.height))
+        livingField(pal, time.value, dark)
+    }
     Column(
         Modifier
             .fillMaxSize()
@@ -684,6 +855,13 @@ internal fun MiniYear(u: HabitUi, onClick: () -> Unit, onGrid: (androidx.compose
     val reduceM = LocalReduceMotion.current
     val appear = remember { Animatable(1f) }
     LaunchedEffect(fx.openAt) { if (fx.openAt > 0 && !reduceM) { appear.snapTo(0f); delay(520); appear.animateTo(1f, tween(900, easing = LinearEasing)) } }
+    // Onda da corrente: depois do feito, uma luz volta pela sequência até o primeiro dia dela; os primeiros traços no
+    // ritmo dos tiques da régua, depois cada vez mais rápido.
+    val wave = remember { Animatable(-1f) }
+    LaunchedEffect(fx.feito) {
+        if (fx.feito > 0 && !reduceM && !u.weekly) { wave.snapTo(0f); wave.animateTo(waveAt(u.streak + 1) + 320f, tween((waveAt(u.streak + 1) + 320f).toInt(), easing = LinearEasing)); wave.snapTo(-1f) }
+    }
+    val scrubDay = if (fx.scrub >= 1f) u.today.minusDays(fx.scrub.toLong()) else null
     Panel(Modifier.scale(scale).clickable(press, indication = null, onClick = onClick)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Caps("Últimas 20 semanas", modifier = Modifier.weight(1f))
@@ -705,15 +883,31 @@ internal fun MiniYear(u: HabitUi, onClick: () -> Unit, onGrid: (androidx.compose
                 // abertura: cada quadrado aparece com uma mola curta, em diagonal a partir do canto de cima
                 val k = if (appear.value >= 1f) 1f else ((appear.value * 900f - 30f - (col + row) * 18f) / 300f).coerceIn(0f, 1f)
                 if (k <= 0f) continue
-                val sc = if (k >= 1f) 1f else 0.2f + 0.8f * (1f + 2.70158f * (k - 1f) * (k - 1f) * (k - 1f) + 1.70158f * (k - 1f) * (k - 1f))
+                var sc = if (k >= 1f) 1f else 0.2f + 0.8f * (1f + 2.70158f * (k - 1f) * (k - 1f) * (k - 1f) + 1.70158f * (k - 1f) * (k - 1f))
+                var fillC = pal.levels[u.level(d)]
+                var lift = 0f
+                if (wave.value >= 0f && mark == Mark.DONE) {
+                    val back = java.time.temporal.ChronoUnit.DAYS.between(d, u.today).toInt()
+                    if (back < u.streak) {
+                        val p = ((wave.value - waveAt(back)) / 300f)
+                        if (p in 0f..1f) { val b = kotlin.math.sin(p * Math.PI.toFloat()); sc *= 1f + 0.22f * b; lift = 2.5.dp.toPx() * b; fillC = androidx.compose.ui.graphics.lerp(fillC, pal.levels[4], 0.8f * b) }
+                    }
+                }
+                if (lift != 0f) drawContext.transform.translate(0f, -lift)
                 if (sc != 1f) drawContext.transform.scale(sc, sc, tl + Offset(cell / 2, cell / 2))
                 habitCell(
-                    pal, tl, cell, r.x, pal.levels[u.level(d)], mark, isToday = d == u.today, selected = false,
+                    pal, tl, cell, r.x, fillC, mark, isToday = d == u.today, selected = false,
                     milestone = d in u.milestones, trope = d in u.state.tropes, call = d == u.today && u.state.pendingTrope,
                 )
                 if (d in u.state.scars) stitch(pal, tl, cell, cell, gap)
                 else if (mark == null && u.state.isRest(d) && d != u.today) restDash(pal, tl, cell)
                 if (sc != 1f) drawContext.transform.scale(1f / sc, 1f / sc, tl + Offset(cell / 2, cell / 2))
+                if (lift != 0f) drawContext.transform.translate(0f, lift)
+                // voltando no tempo: o que vem depois do dia escolhido recua, e o dia ganha um contorno
+                if (scrubDay != null) {
+                    if (d.isAfter(scrubDay)) drawRoundRect(pal.surface.copy(alpha = 0.72f), tl, Size(cell, cell), CornerRadius(r.x))
+                    else if (d == scrubDay) drawRoundRect(pal.ink, tl, Size(cell, cell), CornerRadius(r.x), style = Stroke(1.5.dp.toPx()))
+                }
             }
         }
     }
@@ -741,3 +935,10 @@ internal fun DrawScope.restDash(pal: Palette, tl: Offset, cell: Float) {
 
 /** Quantos traços sobem na escada da régua depois do feito (e quantos tiques tocam). */
 internal const val LADDER = 7
+
+/** Quando a onda da corrente chega ao dia [back] dias atrás: os 7 primeiros no ritmo da régua, depois acelera. */
+internal fun waveAt(back: Int): Float =
+    if (back < LADDER) (LADDER_START + back * LADDER_STEP).toFloat()
+    else (LADDER_START + (LADDER - 1) * LADDER_STEP).toFloat() + Math.pow((back - LADDER + 1).toDouble(), 0.8).toFloat() * 34f
+
+private fun feedbackOn(u: HabitUi) = u.state.haptics

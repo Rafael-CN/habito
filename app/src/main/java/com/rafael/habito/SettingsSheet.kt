@@ -283,7 +283,7 @@ internal fun SettingsContent(s: HabitState, unrestricted: Boolean, lastBackup: L
             Text("Fonte Archivo (SIL Open Font License)", style = Type.caption, color = pal.text3, modifier = Modifier.padding(top = 10.dp, bottom = 4.dp))
         }
         Text(
-            "Hábito 4.8.2 · seus dados ficam só neste aparelho",
+            "Hábito 4.9 · seus dados ficam só neste aparelho",
             style = Type.caption, color = pal.text3, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             modifier = Modifier.fillMaxWidth().padding(top = 22.dp, bottom = 8.dp),
         )

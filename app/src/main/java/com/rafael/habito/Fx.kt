@@ -69,6 +69,7 @@ class FxState {
     var frame by mutableIntStateOf(0)           // muda a cada quadro com partículas vivas: redesenha a camada
     var bursts by mutableIntStateOf(0)
     var openAt by mutableLongStateOf(0L)        // abertura do app
+    var scrub by androidx.compose.runtime.mutableFloatStateOf(0f) // voltar no tempo: quantos dias atrás o número mostra
 
     var todayCell: Rect = Rect.Zero
     var number: Rect = Rect.Zero
@@ -265,3 +266,52 @@ fun uptime() = SystemClock.uptimeMillis()
 
 /** A abertura com o glifo só uma vez por processo (voltar ao app não repete). */
 object OpenOnce { @Volatile var done = false }
+
+/** Segurar para marcar: quanto tempo o dedo fica no botão até valer. */
+const val HOLD_MS = 700
+
+/** Para o gesto de segurar saber se vibra e se soa, e em que cor. */
+data class HoldFeedback(val haptics: Boolean, val sounds: Boolean, val palette: String)
+
+/** A sequência como ela estava no fim do dia [d] (tropeços e descansos não quebram, como no app). */
+fun streakAt(u: HabitUi, d: java.time.LocalDate): Int {
+    var n = 0
+    var x = d
+    var guard = 0
+    while (guard++ < 4000) {
+        val m = u.markOf(x)
+        if (m == Mark.DONE) n++
+        else if (!(x in u.state.tropes || u.state.isRest(x))) break
+        if (x.isBefore(u.start)) break
+        x = x.minusDays(1)
+    }
+    return n
+}
+
+/** A hora do dia (com minutos), atualizada a cada minuto. */
+@Composable
+fun rememberHour(): Float {
+    val h = remember { androidx.compose.runtime.mutableFloatStateOf(hourNow()) }
+    LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(60_000); h.floatValue = hourNow() } }
+    return h.floatValue
+}
+
+private fun hourNow(): Float { val t = java.time.LocalTime.now(); return t.hour + t.minute / 60f }
+
+/**
+ * A luz do dia, bem de leve, no alto do Hoje: manhã fria, tarde morna, fim de tarde alaranjado, noite anil.
+ * Os tons se misturam devagar entre as horas.
+ */
+fun skyTint(hour: Float, dark: Boolean): Color {
+    val keys = listOf(
+        0f to Color(0xFF3C4690), 5.5f to Color(0xFF3C4690), 7.5f to Color(0xFF7FA6CC), 11f to Color(0xFF9BB4C8),
+        14f to Color(0xFFCDB98A), 17f to Color(0xFFE0A060), 19f to Color(0xFFC86A4A), 20.5f to Color(0xFF4A4E9A), 24f to Color(0xFF3C4690),
+    )
+    val i = keys.indexOfLast { it.first <= hour }.coerceIn(0, keys.size - 2)
+    val (h0, c0) = keys[i]; val (h1, c1) = keys[i + 1]
+    val c = androidx.compose.ui.graphics.lerp(c0, c1, ((hour - h0) / (h1 - h0)).coerceIn(0f, 1f))
+    return c.copy(alpha = if (dark) 0.10f else 0.07f)
+}
+
+/** Quanto o quadrado de hoje acende como lanterna: nada até as 17 h, cresce até as 22 h. */
+fun lanternLevel(hour: Float): Float = ((hour - 17f) / 5f).coerceIn(0f, 1f)

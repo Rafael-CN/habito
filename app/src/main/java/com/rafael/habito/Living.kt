@@ -54,7 +54,7 @@ class PetalState { val born = ArrayList<Long>() }
  * O número vira recipiente: o texto (desenhado por [content]) fica num tom de vidro e o material da cor
  * o enche de baixo até [level] (0..1). O texto serve de máscara: nada vaza para fora dos algarismos.
  */
-fun Modifier.materialFill(pal: Palette, level: () -> Float, time: () -> Long, petals: PetalState): Modifier = this
+fun Modifier.materialFill(pal: Palette, level: () -> Float, time: () -> Long, petals: PetalState, tilt: () -> Float = { 0f }): Modifier = this
     .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
     .drawWithContent {
         drawContent()
@@ -64,7 +64,14 @@ fun Modifier.materialFill(pal: Palette, level: () -> Float, time: () -> Long, pe
         val t = time()
         // Nada passa da superfície: só a crista da onda pode subir um pouco. Assim o número nunca parece mais cheio
         // do que o dia em relação ao marco.
-        clipRect(top = surf - 8 * density) { drawMaterial(pal, t, surf, top, bot, petals, BlendMode.SrcAtop) }
+        // inclinado (graus): o material gira em volta do meio da superfície e cresce um pouco para não abrir os cantos
+        val a = tilt()
+        if (a == 0f) clipRect(top = surf - 8 * density) { drawMaterial(pal, t, surf, top, bot, petals, BlendMode.SrcAtop) }
+        else withTransform({ rotate(a, Offset(size.width / 2, surf)); scale(1.18f, 1.18f, Offset(size.width / 2, surf)) }) {
+            clipRect(left = -size.width, right = size.width * 2, top = surf - 8 * density, bottom = size.height * 2) {
+                drawMaterial(pal, t, surf, top, bot + 40 * density, petals, BlendMode.SrcAtop)
+            }
+        }
     }
 
 /** O tom de vidro do número vazio: um véu de tinta sobre o fundo, opaco (vira máscara do material). */
