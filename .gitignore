@@ -1,11 +1,7 @@
-# build e IDE
 build/
 .gradle/
 .kotlin/
 .idea/
 local.properties
 *.iml
-# saídas grandes: APKs, capturas e gravações do emulador
 *.apk
-shots/
-demo/
